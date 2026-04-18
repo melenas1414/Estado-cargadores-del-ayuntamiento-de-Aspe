@@ -70,11 +70,16 @@ async function refrescarTodo() {
 }
 
 // ─── Refresco automático cada 60 s ────────────────────────────────────────
+let intervaloRefresco: ReturnType<typeof setInterval> | null = null;
+
 onMounted(() => {
-  const intervalo = setInterval(() => {
+  intervaloRefresco = setInterval(() => {
     refrescarCargadores();
   }, 60_000);
-  onUnmounted(() => clearInterval(intervalo));
+});
+
+onBeforeUnmount(() => {
+  if (intervaloRefresco !== null) clearInterval(intervaloRefresco);
 });
 
 // ─── Datos derivados ─────────────────────────────────────────────────────────

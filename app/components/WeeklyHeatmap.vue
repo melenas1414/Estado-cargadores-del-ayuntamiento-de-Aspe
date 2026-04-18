@@ -126,7 +126,7 @@ function ocultarTooltip() {
           <div
             v-for="h in HORAS"
             :key="h"
-            class="h-5 w-full cursor-pointer rounded-sm transition-transform hover:scale-110 hover:z-10"
+            class="relative h-5 w-full cursor-pointer rounded-sm transition-transform hover:scale-110"
             :style="{ backgroundColor: colorPorcentaje(getPorcentaje(dia - 1, h)) }"
             @mouseenter="(e) => mostrarTooltip(e, dia - 1, h, getPorcentaje(dia - 1, h))"
             @mouseleave="ocultarTooltip"

@@ -19,8 +19,15 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const cargadores = data ?? [];
+
+  // Usar el timestamp más reciente de los datos, no el tiempo de servidor
+  const ultimaActualizacion = cargadores.length
+    ? cargadores.reduce((max: string, c: any) => (c.created_at > max ? c.created_at : max), cargadores[0].created_at)
+    : new Date().toISOString();
+
   return {
-    cargadores: data ?? [],
-    ultimaActualizacion: new Date().toISOString(),
+    cargadores,
+    ultimaActualizacion,
   };
 });

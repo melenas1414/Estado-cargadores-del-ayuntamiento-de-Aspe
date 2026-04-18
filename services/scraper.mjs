@@ -23,8 +23,9 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const OCM_API_KEY  = process.env.OCM_API_KEY ?? '';
 
-const MAX_REINTENTOS  = 3;
-const PAUSA_REINTENTO = 2000; // ms entre reintentos
+const MAX_RETRIES    = 3;
+const RETRY_PAUSE_MS = 2000; // ms entre reintentos
+const FETCH_TIMEOUT_MS = 10_000; // ms de timeout por petición HTTP
 
 /**
  * Catálogo de las 5 estaciones del Ayuntamiento de Aspe.
@@ -92,14 +93,14 @@ function esperar(ms) {
  * @param {number}   reintentos — Número máximo de reintentos
  * @param {string}   contexto  — Descripción para los logs
  */
-async function conReintentos(fn, reintentos = MAX_REINTENTOS, contexto = '') {
+async function conReintentos(fn, reintentos = MAX_RETRIES, contexto = '') {
   let ultimoError;
   for (let intento = 1; intento <= reintentos; intento++) {
     try {
       return await fn();
     } catch (err) {
       ultimoError = err;
-      const pausa = PAUSA_REINTENTO * intento;
+      const pausa = RETRY_PAUSE_MS * intento;
       console.warn(`[reintento ${intento}/${reintentos}] ${contexto}: ${err.message} — esperando ${pausa}ms`);
       if (intento < reintentos) await esperar(pausa);
     }
@@ -127,7 +128,7 @@ async function consultarIberdrola(estacion) {
       Authorization: `Bearer ${key}`,
       Accept:        'application/json',
     },
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!respuesta.ok) {
@@ -165,7 +166,7 @@ async function consultarOpenChargeMap(estacion) {
   const url      = `https://api.openchargemap.io/v3/poi/?${params}`;
   const respuesta = await fetch(url, {
     headers: { Accept: 'application/json' },
-    signal:  AbortSignal.timeout(10_000),
+    signal:  AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!respuesta.ok) {
@@ -193,7 +194,7 @@ async function obtenerEstado(estacion) {
   try {
     const disponible = await conReintentos(
       () => consultarIberdrola(estacion),
-      MAX_REINTENTOS,
+      MAX_RETRIES,
       `Iberdrola · ${estacion.location_name}`,
     );
     return { ...estacion, is_available: disponible, fuente: 'iberdrola' };
@@ -205,7 +206,7 @@ async function obtenerEstado(estacion) {
   try {
     const disponible = await conReintentos(
       () => consultarOpenChargeMap(estacion),
-      MAX_REINTENTOS,
+      MAX_RETRIES,
       `OCM · ${estacion.location_name}`,
     );
     return { ...estacion, is_available: disponible, fuente: 'ocm' };

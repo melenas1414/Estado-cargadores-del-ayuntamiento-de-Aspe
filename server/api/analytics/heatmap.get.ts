@@ -27,6 +27,10 @@ export default defineEventHandler(async (event) => {
 
   const supabase = await serverSupabaseClient(event);
 
+  // Intenta llamar a la función RPC opcional 'heatmap_ocupacion' (PostgreSQL) que, si existe,
+  // ejecuta la agregación en la base de datos para mejor rendimiento.
+  // Si la función no está creada en Supabase, se captura el error y se usa una
+  // query directa como fallback (sin necesidad de definir la RPC).
   const { data, error } = await supabase.rpc('heatmap_ocupacion', {
     intervalo_dias: intervalo,
   });

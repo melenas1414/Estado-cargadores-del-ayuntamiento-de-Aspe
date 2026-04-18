@@ -7,6 +7,10 @@ on:
   # Permite ejecución manual desde la interfaz de GitHub Actions
   workflow_dispatch:
 
+# Limitar permisos del GITHUB_TOKEN al mínimo necesario
+permissions:
+  contents: read
+
 jobs:
   monitorizar:
     name: Consultar estado y guardar en Supabase
