@@ -1,0 +1,11 @@
+{
+  "name": "monitor-cargadores-aspe",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node scraper.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  }
+}
