@@ -11,7 +11,7 @@
  *   IBERDROLA_API_KEY — Token/API Key de Iberdrola (opcional)
  *
  * Nota: Si no dispones de acceso a la API privada de Iberdrola, el scraper
- * usa OpenChargeMap como fuente alternativa gratuita.
+ * usa OpenChargeMap como fuente principal gratuita.
  * Obtén tu clave en: https://openchargemap.org/site/developerinfo
  * y añádela como OCM_API_KEY en los secretos de GitHub.
  */
@@ -21,7 +21,8 @@ import { createClient } from '@supabase/supabase-js';
 // ─── Configuración ─────────────────────────────────────────────────────────
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
-const OCM_API_KEY  = process.env.OCM_API_KEY ?? '';
+const OCM_API_KEY  = (process.env.OCM_API_KEY ?? '').trim();
+const IBERDROLA_API_KEY = process.env.IBERDROLA_API_KEY ?? '';
 
 const MAX_RETRIES    = 3;
 const RETRY_PAUSE_MS = 2000; // ms entre reintentos
@@ -42,35 +43,35 @@ const ESTACIONES = [
     location_name: 'Av. Navarra 67, Aspe',
     lat: 38.3471,
     lon: -0.7654,
-    ocm_id: null,
+    ocm_id: 216923,
   },
   {
     station_id:    'ESIBE22E0001002',
     location_name: 'Av. Constitución 42, Aspe',
     lat: 38.3460,
     lon: -0.7670,
-    ocm_id: null,
+    ocm_id: 204184,
   },
   {
     station_id:    'ESIBE22E0001003',
     location_name: 'Av. Padre Ismael 34, Aspe',
     lat: 38.3448,
     lon: -0.7682,
-    ocm_id: null,
+    ocm_id: 204183,
   },
   {
     station_id:    'ESIBE22E0001004',
     location_name: 'Av. Juan Carlos I 36, Aspe',
     lat: 38.3435,
     lon: -0.7695,
-    ocm_id: null,
+    ocm_id: 204185,
   },
   {
     station_id:    'ESIBE22E0001005',
     location_name: 'Calle Orihuela 100, Aspe',
     lat: 38.3420,
     lon: -0.7710,
-    ocm_id: null,
+    ocm_id: 204186,
   },
 ];
 
@@ -114,11 +115,11 @@ async function conReintentos(fn, reintentos = MAX_RETRIES, contexto = '') {
  * La API utiliza autenticación Bearer. Ajusta el endpoint y el parseo
  * según la documentación que te proporcione Iberdrola.
  *
- * Documentación interna: https://developer.iberdrola.com (requiere registro)
+ * Nota: este endpoint requiere acuerdo privado con el operador.
  */
 async function consultarIberdrola(estacion) {
   const base = process.env.IBERDROLA_API_URL ?? 'https://api.iberdrola.es/ev/v1';
-  const key  = process.env.IBERDROLA_API_KEY;
+  const key  = IBERDROLA_API_KEY;
 
   if (!key) throw new Error('IBERDROLA_API_KEY no configurada');
 
@@ -150,23 +151,36 @@ async function consultarIberdrola(estacion) {
  * https://openchargemap.org/site/develop/api
  */
 async function consultarOpenChargeMap(estacion) {
+  if (!OCM_API_KEY) {
+    throw new Error('OCM_API_KEY no configurada');
+  }
+
   const params = new URLSearchParams({
-    output:       'json',
-    countrycode:  'ES',
-    maxresults:   '1',
-    compact:      'false',
-    verbose:      'false',
-    latitude:     String(estacion.lat),
-    longitude:    String(estacion.lon),
-    distance:     '0.1',
-    distanceunit: 'KM',
-    ...(OCM_API_KEY && { key: OCM_API_KEY }),
+    output:  'json',
+    compact: 'false',
+    verbose: 'false',
+    key:     OCM_API_KEY,
   });
 
-  const url      = `https://api.openchargemap.io/v3/poi/?${params}`;
+  if (estacion.ocm_id) {
+    params.set('chargepointid', String(estacion.ocm_id));
+  } else {
+    params.set('countrycode', 'ES');
+    params.set('maxresults', '10');
+    params.set('latitude', String(estacion.lat));
+    params.set('longitude', String(estacion.lon));
+    params.set('distance', '0.5');
+    params.set('distanceunit', 'KM');
+  }
+
+  const url       = `https://api.openchargemap.io/v3/poi/?${params}`;
   const respuesta = await fetch(url, {
-    headers: { Accept: 'application/json' },
-    signal:  AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    headers: {
+      Accept: 'application/json',
+      'x-api-key': OCM_API_KEY,
+      'user-agent': 'estado-cargadores-aspe/1.0',
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (!respuesta.ok) {
@@ -178,31 +192,33 @@ async function consultarOpenChargeMap(estacion) {
     throw new Error(`Sin resultados OCM para ${estacion.location_name}`);
   }
 
-  const punto      = datos[0];
+  const punto = estacion.ocm_id
+    ? datos[0]
+    : [...datos].sort((a, b) => (a.AddressInfo?.Distance ?? Infinity) - (b.AddressInfo?.Distance ?? Infinity))[0];
   const conexiones = punto.Connections ?? [];
 
-  // StatusType.IsOperational indica si el punto está operativo y libre
-  const disponible = conexiones.some(
-    (c) => c.StatusType?.IsOperational === true,
-  );
+  // StatusType.IsOperational indica si el punto está operativo y disponible.
+  const disponible = conexiones.some((c) => c.StatusType?.IsOperational === true);
   return disponible;
 }
 
 // ─── Orquestador: obtener estado de una estación ─────────────────────────────
 async function obtenerEstado(estacion) {
-  // 1.º intentamos la API oficial de Iberdrola
-  try {
-    const disponible = await conReintentos(
-      () => consultarIberdrola(estacion),
-      MAX_RETRIES,
-      `Iberdrola · ${estacion.location_name}`,
-    );
-    return { ...estacion, is_available: disponible, fuente: 'iberdrola' };
-  } catch (errIberdrola) {
-    console.warn(`API Iberdrola no disponible para ${estacion.location_name}: ${errIberdrola.message}`);
+  // Si hay credenciales privadas, intentamos Iberdrola primero.
+  if (IBERDROLA_API_KEY) {
+    try {
+      const disponible = await conReintentos(
+        () => consultarIberdrola(estacion),
+        MAX_RETRIES,
+        `Iberdrola · ${estacion.location_name}`,
+      );
+      return { ...estacion, is_available: disponible, fuente: 'iberdrola' };
+    } catch (errIberdrola) {
+      console.warn(`API Iberdrola no disponible para ${estacion.location_name}: ${errIberdrola.message}`);
+    }
   }
 
-  // 2.º usamos OpenChargeMap como fallback
+  // Fuente principal gratuita: OpenChargeMap.
   try {
     const disponible = await conReintentos(
       () => consultarOpenChargeMap(estacion),
@@ -243,6 +259,14 @@ async function main() {
   const inicio = Date.now();
   console.log(`\n🔌 Monitor de Cargadores EV · Aspe — ${new Date().toISOString()}`);
   console.log('─'.repeat(60));
+
+  if (!IBERDROLA_API_KEY && !OCM_API_KEY) {
+    throw new Error('Configura OCM_API_KEY (o credenciales privadas de Iberdrola) para obtener estados de cargadores.');
+  }
+
+  if (OCM_API_KEY.toLowerCase().includes('tu_clave_ocm')) {
+    throw new Error('OCM_API_KEY contiene un placeholder. Sustituyelo por una clave real de OpenChargeMap.');
+  }
 
   const supabase = crearClienteSupabase();
 

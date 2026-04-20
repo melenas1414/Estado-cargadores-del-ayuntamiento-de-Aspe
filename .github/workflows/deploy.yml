@@ -1,0 +1,114 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - 'app/**'
+      - 'server/**'
+      - 'nuxt.config.ts'
+      - 'tailwind.config.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vercel.json'
+      - 'supabase/functions/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detectar-cambios:
+    name: Detectar cambios desplegables
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      supabase: ${{ steps.filter.outputs.supabase }}
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: 🔎 Clasificar cambios
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            frontend:
+              - 'app/**'
+              - 'server/**'
+              - 'nuxt.config.ts'
+              - 'tailwind.config.ts'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'vercel.json'
+            supabase:
+              - 'supabase/functions/**'
+
+  desplegar-frontend:
+    name: Desplegar frontend en Vercel
+    runs-on: ubuntu-latest
+    needs: detectar-cambios
+    if: needs.detectar-cambios.outputs.frontend == 'true'
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Instalar dependencias
+        run: npm ci
+
+      - name: ▲ Instalar Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: 🔗 Sincronizar configuración de Vercel
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: 🏗️ Construir artefacto de producción
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: 🚀 Publicar en Vercel
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  desplegar-supabase:
+    name: Desplegar Edge Function en Supabase
+    runs-on: ubuntu-latest
+    needs: detectar-cambios
+    if: needs.detectar-cambios.outputs.supabase == 'true'
+
+    steps:
+      - name: 📥 Clonar repositorio
+        uses: actions/checkout@v4
+
+      - name: ⚡ Instalar Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: 🔐 Sincronizar secreto OCM_API_KEY
+        run: supabase secrets set OCM_API_KEY=${{ secrets.OCM_API_KEY }} --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: 🚀 Desplegar monitor-cargadores
+        run: supabase functions deploy monitor-cargadores --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

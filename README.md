@@ -5,8 +5,8 @@ Monitor en tiempo real + analítica histórica para los **5 cargadores Iberdrola
 | Feature | Detalle |
 |---|---|
 | **Stack** | Nuxt 4, Supabase (PostgreSQL), Tailwind CSS, Chart.js |
-| **Automatización** | GitHub Actions — cron cada 15 minutos |
-| **Despliegue** | Vercel (frontend) + GitHub (scraper) |
+| **Automatización** | Supabase Edge Functions + `pg_cron` cada 15 minutos |
+| **Despliegue** | GitHub Actions -> Vercel (frontend) + Supabase (Edge Function) |
 | **Visualización** | Heatmap semanal, predicción horaria, KPIs de uso |
 
 ---
@@ -38,36 +38,65 @@ Monitor en tiempo real + analítica histórica para los **5 cargadores Iberdrola
 
 ---
 
-## 🔌 2. Configurar el Scraper (GitHub Actions)
+## 🔌 2. Automatización en Supabase (Edge Functions + pg_cron)
 
-El scraper (`services/scraper.mjs`) se ejecuta en GitHub Actions **cada 15 minutos**.
+La captura se ejecuta en Supabase cada 15 minutos sin depender de GitHub Actions.
 
-### Variables de entorno / Secretos de GitHub
-
-Añade los siguientes secretos en **Settings → Secrets and variables → Actions**:
-
-| Secreto | Descripción |
-|---|---|
-| `SUPABASE_URL` | URL de tu proyecto Supabase |
-| `SUPABASE_KEY` | Clave `service_role` de Supabase |
-| `IBERDROLA_API_URL` | *(Opcional)* URL base de la API Iberdrola |
-| `IBERDROLA_API_KEY` | *(Opcional)* Token de la API Iberdrola |
-| `OCM_API_KEY` | *(Opcional)* API Key de [OpenChargeMap](https://openchargemap.org/site/developerinfo) (fallback gratuito) |
-
-### Ejecución local del scraper
+### 2.1 Desplegar la Edge Function
 
 ```bash
-cd services
-npm install
-SUPABASE_URL=... SUPABASE_KEY=... node scraper.mjs
+supabase functions deploy monitor-cargadores --project-ref <PROJECT_REF>
 ```
 
----
+Archivo de la función:
+- `supabase/functions/monitor-cargadores/index.ts`
 
-## 🌐 3. Desplegar el Dashboard (Vercel)
+### 2.2 Configurar secretos de la función
 
-1. Conecta el repositorio en [vercel.com](https://vercel.com).
-2. Añade las siguientes variables de entorno en Vercel:
+```bash
+supabase secrets set OCM_API_KEY=<TU_OCM_API_KEY> --project-ref <PROJECT_REF>
+```
+
+> `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta Supabase automáticamente.
+
+### 2.3 Programar ejecución cada 15 minutos
+
+1. Abre **SQL Editor** en Supabase.
+2. Ejecuta `supabase/cron.sql` reemplazando:
+    - `<PROJECT_REF>`
+    - `<SERVICE_ROLE_KEY>`
+
+### 2.4 Test manual de la función
+
+```bash
+curl -X POST "https://<PROJECT_REF>.supabase.co/functions/v1/monitor-cargadores" \
+   -H "Authorization: Bearer <SERVICE_ROLE_KEY>" \
+   -H "Content-Type: application/json"
+```
+
+## 🚀 3. Despliegue automático con GitHub Actions
+
+El workflow [`deploy.yml`](./.github/workflows/deploy.yml) publica automáticamente:
+
+- El frontend en Vercel cuando cambian `app/`, `server/` o la configuración Nuxt/Vercel.
+- La Edge Function `monitor-cargadores` cuando cambia `supabase/functions/`.
+
+### Secretos necesarios en GitHub
+
+Configura estos secretos en **Settings -> Secrets and variables -> Actions**:
+
+| Secreto | Uso |
+|---|---|
+| `VERCEL_TOKEN` | Autenticación con Vercel CLI |
+| `VERCEL_ORG_ID` | ID del equipo/organización en Vercel |
+| `VERCEL_PROJECT_ID` | ID del proyecto en Vercel |
+| `SUPABASE_ACCESS_TOKEN` | Token personal para desplegar con Supabase CLI |
+| `SUPABASE_PROJECT_REF` | Ref del proyecto Supabase |
+| `OCM_API_KEY` | Clave de OpenChargeMap para sincronizar el secreto de la función |
+
+### Variables de entorno en Vercel
+
+Además, el proyecto de Vercel debe tener configuradas estas variables:
 
 | Variable | Valor |
 |---|---|
@@ -75,7 +104,7 @@ SUPABASE_URL=... SUPABASE_KEY=... node scraper.mjs
 | `NUXT_PUBLIC_SUPABASE_KEY` | Clave anónima pública |
 | `SUPABASE_SERVICE_KEY` | Clave service_role (sólo servidor) |
 
-3. Vercel detectará automáticamente el preset de Nuxt y desplegará la app.
+Cada push a `master` o `main` lanzará el despliegue si detecta cambios relevantes.
 
 ---
 
@@ -118,13 +147,17 @@ El dashboard estará disponible en `http://localhost:3000`.
 │           ├── prediction.get.ts        # Predicción horaria
 │           └── metrics.get.ts           # Métricas de uso
 ├── services/
-│   ├── scraper.mjs                      # Script de monitorización
-│   └── package.json                     # Dependencias del scraper
+│   ├── scraper.mjs                      # Script de monitorización local (opcional)
+│   └── package.json                     # Dependencias del scraper local
 ├── supabase/
 │   └── schema.sql                       # DDL de la tabla charging_logs
+│   ├── cron.sql                         # Programación pg_cron para la Edge Function
+│   └── functions/
+│       └── monitor-cargadores/
+│           └── index.ts                # Función serverless de captura cada 15 min
 ├── .github/
 │   └── workflows/
-│       └── monitor.yml                  # Cron de GitHub Actions (cada 15 min)
+│       └── monitor.yml                  # Alternativa opcional con GitHub Actions
 ├── nuxt.config.ts                       # Configuración de Nuxt 4
 ├── tailwind.config.ts                   # Tema oscuro (slate-950)
 ├── vercel.json                          # Configuración de Vercel
@@ -155,7 +188,7 @@ El dashboard estará disponible en `http://localhost:3000`.
 ## 🔒 Seguridad
 
 - Las claves `service_role` de Supabase **nunca** se exponen al cliente.
-- Las variables sensibles se gestionan como **Secretos de GitHub** y **Variables de Entorno de Vercel**.
+- Las variables sensibles se gestionan como **Supabase Secrets** y **Variables de Entorno de Vercel**.
 - RLS de Supabase habilitado: lectura pública, escritura sólo para el service role.
 
 ---
