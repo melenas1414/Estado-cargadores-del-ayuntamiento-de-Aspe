@@ -1,5 +1,8 @@
 name: Deploy
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 on:
   push:
     branches:
@@ -30,11 +33,11 @@ jobs:
 
     steps:
       - name: 📥 Clonar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 🔎 Clasificar cambios
         id: filter
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             frontend:
@@ -56,7 +59,7 @@ jobs:
 
     steps:
       - name: 📥 Clonar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 🟢 Configurar Node.js 20
         uses: actions/setup-node@v4
@@ -96,7 +99,7 @@ jobs:
 
     steps:
       - name: 📥 Clonar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: ✅ Validar secretos requeridos
         env:
