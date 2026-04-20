@@ -242,8 +242,23 @@ Deno.serve(async (_req) => {
       return acc
     }, {})
 
+    const chargers = results.map((r) => ({
+      station_id: r.station_id,
+      location_name: r.location_name,
+      google_name: r.google_name,
+      status: r.status,
+      is_available: r.is_available,
+      source: r.source,
+    }))
+
     return new Response(
-      JSON.stringify({ ok: true, inserted: rowsToInsert.length, sourceSummary, statusSummary }),
+      JSON.stringify({
+        ok: true,
+        inserted: rowsToInsert.length,
+        sourceSummary,
+        statusSummary,
+        chargers,
+      }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     )
   } catch (error) {
