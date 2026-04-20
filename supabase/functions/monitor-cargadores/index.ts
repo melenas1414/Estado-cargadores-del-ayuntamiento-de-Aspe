@@ -16,6 +16,8 @@ type StationResult = {
   google_name: string | null
   status: EvAvailabilityStatus
   is_available: boolean
+  available_connectors: number | null
+  total_connectors: number | null
   source: string
 }
 
@@ -37,6 +39,11 @@ type GooglePlacesResponse = {
   places?: GooglePlace[]
 }
 
+type ConnectorSnapshot = {
+  available_connectors: number | null
+  total_connectors: number | null
+}
+
 type OcmPoint = {
   Connections?: Array<{ StatusType?: { ID?: number; Title?: string; IsOperational?: boolean } }>
 }
@@ -53,20 +60,37 @@ const STATIONS: Station[] = [
 
 // ─── Google Places API (New) ──────────────────────────────────────────────────
 
-function parseEvChargeStatus(connectorAggregation: ConnectorAggregation[] | undefined): EvAvailabilityStatus {
-  if (!connectorAggregation?.length) return 'SIN_DATOS_DINAMICOS'
+function parseEvChargeStatus(
+  connectorAggregation: ConnectorAggregation[] | undefined,
+): { status: EvAvailabilityStatus; snapshot: ConnectorSnapshot } {
+  if (!connectorAggregation?.length) {
+    return {
+      status: 'SIN_DATOS_DINAMICOS',
+      snapshot: { available_connectors: null, total_connectors: null },
+    }
+  }
 
   const hasData = connectorAggregation.some((c) => c.availableCount !== undefined && c.availableCount !== null)
-  if (!hasData) return 'SIN_DATOS_DINAMICOS'
-
   const totalAvailable = connectorAggregation.reduce((sum, c) => sum + (c.availableCount ?? 0), 0)
-  return totalAvailable > 0 ? 'DISPONIBLE' : 'OCUPADO'
+  const totalConnectors = connectorAggregation.reduce((sum, c) => {
+    if (c.count !== undefined && c.count !== null) return sum + c.count
+    if (c.availableCount !== undefined && c.availableCount !== null) return sum + c.availableCount
+    return sum
+  }, 0)
+
+  const snapshot: ConnectorSnapshot = {
+    available_connectors: hasData ? totalAvailable : null,
+    total_connectors: totalConnectors > 0 ? totalConnectors : null,
+  }
+
+  if (!hasData) return { status: 'SIN_DATOS_DINAMICOS', snapshot }
+  return { status: totalAvailable > 0 ? 'DISPONIBLE' : 'OCUPADO', snapshot }
 }
 
 async function fetchGooglePlacesStatus(
   station: Station,
   apiKey: string,
-): Promise<{ googleName: string | null; status: EvAvailabilityStatus }> {
+): Promise<{ googleName: string | null; status: EvAvailabilityStatus; snapshot: ConnectorSnapshot }> {
   const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
     headers: {
@@ -92,9 +116,9 @@ async function fetchGooglePlacesStatus(
   }
 
   const googleName = place.displayName?.text ?? null
-  const status = parseEvChargeStatus(place.evChargeOptions?.connectorAggregation)
+  const { status, snapshot } = parseEvChargeStatus(place.evChargeOptions?.connectorAggregation)
 
-  return { googleName, status }
+  return { googleName, status, snapshot }
 }
 
 // ─── OpenChargeMap (fallback) ─────────────────────────────────────────────────
@@ -115,6 +139,15 @@ function getAvailabilityFromConnections(connections: OcmPoint['Connections'] = [
   if (hasOccupied) return false
 
   return connections.some((c) => c?.StatusType?.IsOperational === true)
+}
+
+function isConnectionAvailable(connection: { StatusType?: { ID?: number; Title?: string; IsOperational?: boolean } }): boolean | null {
+  const title = String(connection?.StatusType?.Title ?? '').toLowerCase()
+  const statusId = connection?.StatusType?.ID
+
+  if (statusId === 50 || title.includes('available') || title.includes('disponible') || title.includes('libre')) return true
+  if (statusId === 60 || title.includes('occupied') || title.includes('in use') || title.includes('ocupado')) return false
+  return null
 }
 
 async function fetchOcmStatus(ocmId: number, ocmApiKey: string): Promise<boolean> {
@@ -142,6 +175,45 @@ async function fetchOcmStatus(ocmId: number, ocmApiKey: string): Promise<boolean
   return getAvailabilityFromConnections(points[0].Connections ?? [])
 }
 
+async function fetchOcmSnapshot(ocmId: number, ocmApiKey: string): Promise<{
+  isAvailable: boolean
+  snapshot: ConnectorSnapshot
+}> {
+  const params = new URLSearchParams({
+    output: 'json',
+    compact: 'false',
+    verbose: 'false',
+    chargepointid: String(ocmId),
+    key: ocmApiKey,
+  })
+
+  const response = await fetch(`https://api.openchargemap.io/v3/poi/?${params}`, {
+    headers: {
+      Accept: 'application/json',
+      'x-api-key': ocmApiKey,
+      'user-agent': 'estado-cargadores-aspe-edge/1.0',
+    },
+  })
+
+  if (!response.ok) throw new Error(`OCM HTTP ${response.status}`)
+
+  const points = (await response.json()) as OcmPoint[]
+  if (!points.length) throw new Error(`Sin resultados OCM para chargepointid=${ocmId}`)
+
+  const connections = points[0].Connections ?? []
+  const knownStatuses = connections.map(isConnectionAvailable).filter((v) => v !== null) as boolean[]
+  const availableCount = knownStatuses.filter(Boolean).length
+  const totalConnectors = connections.length > 0 ? connections.length : null
+
+  return {
+    isAvailable: getAvailabilityFromConnections(connections),
+    snapshot: {
+      available_connectors: knownStatuses.length ? availableCount : null,
+      total_connectors: totalConnectors,
+    },
+  }
+}
+
 // ─── Orquestador principal ────────────────────────────────────────────────────
 
 async function checkAspeStationsStatus(
@@ -154,7 +226,7 @@ async function checkAspeStationsStatus(
       // Fuente 1: Google Places API (New) — datos en tiempo real
       if (googleApiKey) {
         try {
-          const { googleName, status } = await fetchGooglePlacesStatus(station, googleApiKey)
+          const { googleName, status, snapshot } = await fetchGooglePlacesStatus(station, googleApiKey)
           if (status !== 'SIN_DATOS_DINAMICOS') {
             return {
               station_id: station.station_id,
@@ -162,6 +234,8 @@ async function checkAspeStationsStatus(
               google_name: googleName,
               status,
               is_available: status === 'DISPONIBLE',
+              available_connectors: snapshot.available_connectors,
+              total_connectors: snapshot.total_connectors,
               source: 'google-places',
             }
           }
@@ -172,13 +246,15 @@ async function checkAspeStationsStatus(
 
       // Fuente 2: OpenChargeMap (fallback)
       try {
-        const isAvailable = await fetchOcmStatus(station.ocm_id, ocmApiKey)
+        const { isAvailable, snapshot } = await fetchOcmSnapshot(station.ocm_id, ocmApiKey)
         return {
           station_id: station.station_id,
           location_name: station.location_name,
           google_name: null,
           status: isAvailable ? 'DISPONIBLE' : 'OCUPADO',
           is_available: isAvailable,
+          available_connectors: snapshot.available_connectors,
+          total_connectors: snapshot.total_connectors,
           source: 'openchargemap',
         }
       } catch (_err) {
@@ -188,6 +264,8 @@ async function checkAspeStationsStatus(
           google_name: null,
           status: 'SIN_DATOS_DINAMICOS',
           is_available: false,
+          available_connectors: null,
+          total_connectors: null,
           source: 'sin-datos',
         }
       }
@@ -222,15 +300,33 @@ Deno.serve(async (_req) => {
   try {
     const results = await checkAspeStationsStatus(STATIONS, googleApiKey, ocmApiKey)
 
-    const rowsToInsert = results.map(({ station_id, location_name, is_available }) => ({
+    const rowsToInsert = results.map(({ station_id, location_name, is_available, available_connectors, total_connectors }) => ({
       station_id,
       location_name,
       is_available,
       power_kw: 22,
+      available_connectors,
+      total_connectors,
     }))
 
-    const { error } = await supabase.from('charging_logs').insert(rowsToInsert)
-    if (error) throw new Error(`Error al insertar en Supabase: ${error.message}`)
+    const { error: insertError } = await supabase.from('charging_logs').insert(rowsToInsert)
+    if (insertError) {
+      const isOldSchema =
+        insertError.message.includes('available_connectors') ||
+        insertError.message.includes('total_connectors')
+
+      if (!isOldSchema) throw new Error(`Error al insertar en Supabase: ${insertError.message}`)
+
+      const fallbackRows = rowsToInsert.map(({ station_id, location_name, is_available, power_kw }) => ({
+        station_id,
+        location_name,
+        is_available,
+        power_kw,
+      }))
+
+      const { error: fallbackError } = await supabase.from('charging_logs').insert(fallbackRows)
+      if (fallbackError) throw new Error(`Error al insertar en Supabase: ${fallbackError.message}`)
+    }
 
     const sourceSummary = results.reduce<Record<string, number>>((acc, r) => {
       acc[r.source] = (acc[r.source] ?? 0) + 1
@@ -248,6 +344,8 @@ Deno.serve(async (_req) => {
       google_name: r.google_name,
       status: r.status,
       is_available: r.is_available,
+      available_connectors: r.available_connectors,
+      total_connectors: r.total_connectors,
       source: r.source,
     }))
 

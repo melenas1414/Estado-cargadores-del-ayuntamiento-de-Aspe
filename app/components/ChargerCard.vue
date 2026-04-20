@@ -7,6 +7,8 @@ interface Props {
   isAvailable:  boolean;
   powerKw:      number;
   updatedAt:    string;
+  availableConnectors?: number | null;
+  totalConnectors?: number | null;
 }
 
 const props = defineProps<Props>();
@@ -42,6 +44,17 @@ const badgeClasses = computed(() => [
     ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/30'
     : 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/30',
 ]);
+
+const conectoresTexto = computed(() => {
+  const total = props.totalConnectors;
+  const libres = props.availableConnectors;
+
+  if (typeof total === 'number' && total > 0 && typeof libres === 'number') {
+    return `${libres}/${total} conectores libres`;
+  }
+
+  return 'Sin detalle de conectores';
+});
 </script>
 
 <template>
@@ -77,15 +90,20 @@ const badgeClasses = computed(() => [
     </div>
 
     <!-- Detalles: potencia y última actualización -->
-    <div class="mt-auto flex items-center justify-between text-xs text-slate-500">
-      <span class="flex items-center gap-1">
-        <Zap class="h-3 w-3 text-blue-400" />
-        {{ powerKw }} kW
-      </span>
-      <span class="flex items-center gap-1">
-        <Clock class="h-3 w-3" />
-        Act. {{ horaActualizacion }}
-      </span>
+    <div class="mt-auto space-y-1 text-xs text-slate-500">
+      <p class="text-[11px] text-slate-400">
+        {{ conectoresTexto }}
+      </p>
+      <div class="flex items-center justify-between">
+        <span class="flex items-center gap-1">
+          <Zap class="h-3 w-3 text-blue-400" />
+          {{ powerKw }} kW
+        </span>
+        <span class="flex items-center gap-1">
+          <Clock class="h-3 w-3" />
+          Act. {{ horaActualizacion }}
+        </span>
+      </div>
     </div>
   </div>
 </template>

@@ -88,6 +88,14 @@ const ultimaActualizacion = computed(() => cargadoresData.value?.ultimaActualiza
 
 const libres   = computed(() => cargadores.value.filter((c: any) => c.is_available).length);
 const ocupados = computed(() => cargadores.value.filter((c: any) => !c.is_available).length);
+const conectoresLibres = computed(() => cargadores.value.reduce((sum: number, c: any) => {
+  if (typeof c.available_connectors === 'number') return sum + c.available_connectors;
+  return sum + (c.is_available ? 1 : 0);
+}, 0));
+const conectoresTotales = computed(() => cargadores.value.reduce((sum: number, c: any) => {
+  if (typeof c.total_connectors === 'number' && c.total_connectors > 0) return sum + c.total_connectors;
+  return sum + 1;
+}, 0));
 
 const horaLegible = computed(() => {
   if (!ultimaActualizacion.value) return '—';
@@ -101,9 +109,13 @@ const horaLegible = computed(() => {
 // Supertítulo de estado global
 const estadoGlobal = computed(() => {
   if (!cargadores.value.length) return null;
-  if (libres.value === cargadores.value.length) return { texto: 'Todos libres',  clase: 'text-emerald-400' };
-  if (ocupados.value === cargadores.value.length) return { texto: 'Todos ocupados', clase: 'text-rose-400' };
-  return { texto: `${libres.value} libre${libres.value !== 1 ? 's' : ''}`, clase: 'text-amber-400' };
+  if (conectoresLibres.value === conectoresTotales.value) {
+    return { texto: `${conectoresLibres.value}/${conectoresTotales.value} conectores libres`, clase: 'text-emerald-400' };
+  }
+  if (conectoresLibres.value === 0) {
+    return { texto: `0/${conectoresTotales.value} conectores libres`, clase: 'text-rose-400' };
+  }
+  return { texto: `${conectoresLibres.value}/${conectoresTotales.value} conectores libres`, clase: 'text-amber-400' };
 });
 
 // ─── Meta tags dinámicos ──────────────────────────────────────────────────────
@@ -180,7 +192,7 @@ useSeoMeta({
           id="estado-actual"
           class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500"
         >
-          Estado Actual · {{ cargadores.length }} cargadores
+          Estado Actual · {{ cargadores.length }} puntos · {{ conectoresLibres }}/{{ conectoresTotales }} conectores libres
         </h2>
 
         <!-- Skeleton mientras carga -->
@@ -207,6 +219,8 @@ useSeoMeta({
             :is-available="c.is_available"
             :power-kw="c.power_kw"
             :updated-at="c.created_at"
+            :available-connectors="c.available_connectors"
+            :total-connectors="c.total_connectors"
           />
         </div>
       </section>
