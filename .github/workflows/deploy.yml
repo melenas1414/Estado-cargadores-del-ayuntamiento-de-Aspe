@@ -58,6 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: detectar-cambios
     if: github.event_name == 'workflow_dispatch' || needs.detectar-cambios.outputs.frontend == 'true'
+    environment: cargadores-app-status
 
     steps:
       - name: 📥 Clonar repositorio
@@ -98,6 +99,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: detectar-cambios
     if: github.event_name == 'workflow_dispatch' || needs.detectar-cambios.outputs.supabase == 'true'
+    environment: cargadores-app-status
 
     steps:
       - name: 📥 Clonar repositorio
