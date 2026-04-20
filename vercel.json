@@ -1,5 +1,4 @@
 {
-  "framework": "nuxtjs",
   "headers": [
     {
       "source": "/(.*)",
