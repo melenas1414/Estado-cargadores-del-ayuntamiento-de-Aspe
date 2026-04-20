@@ -3,7 +3,9 @@
     "preset": "nuxt"
   },
   "functions": {
-    "maxDuration": 10
+    "api/**": {
+      "maxDuration": 10
+    }
   },
   "headers": [
     {
