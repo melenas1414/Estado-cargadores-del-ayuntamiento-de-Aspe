@@ -2,6 +2,8 @@
   "framework": {
     "preset": "nuxt"
   },
+  "outputDirectory": ".output/public",
+  "buildCommand": "npm run build",
   "headers": [
     {
       "source": "/(.*)",
