@@ -23,6 +23,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const OCM_API_KEY  = (process.env.OCM_API_KEY ?? '').trim();
 const IBERDROLA_API_KEY = process.env.IBERDROLA_API_KEY ?? '';
+const IBERDROLA_WEB_COOKIE = (process.env.IBERDROLA_WEB_COOKIE ?? '').trim();
 
 const MAX_RETRIES    = 3;
 const RETRY_PAUSE_MS = 2000; // ms entre reintentos
@@ -35,6 +36,7 @@ const FETCH_TIMEOUT_MS = 10_000; // ms de timeout por petición HTTP
  *               Puedes encontrarlo en la app Iberdrola Smart Charging
  *               o mediante la llamada a /api/chargers/list descrita más abajo.
  * ocm_id      → ID en OpenChargeMap (fallback). Búscalos en https://openchargemap.org
+ * iberdrola_web_id → ID cuprId para endpoint web público de Iberdrola.
  * lat / lon   → Coordenadas para consultas geoespaciales.
  */
 const ESTACIONES = [
@@ -44,6 +46,7 @@ const ESTACIONES = [
     lat: 38.3471,
     lon: -0.7654,
     ocm_id: 216923,
+    iberdrola_web_id: 144579,
   },
   {
     station_id:    'ESIBE22E0001002',
@@ -51,6 +54,7 @@ const ESTACIONES = [
     lat: 38.3460,
     lon: -0.7670,
     ocm_id: 204184,
+    iberdrola_web_id: 97917,
   },
   {
     station_id:    'ESIBE22E0001003',
@@ -58,6 +62,7 @@ const ESTACIONES = [
     lat: 38.3448,
     lon: -0.7682,
     ocm_id: 204183,
+    iberdrola_web_id: 97897,
   },
   {
     station_id:    'ESIBE22E0001004',
@@ -65,6 +70,7 @@ const ESTACIONES = [
     lat: 38.3435,
     lon: -0.7695,
     ocm_id: 204185,
+    iberdrola_web_id: 5848,
   },
   {
     station_id:    'ESIBE22E0001005',
@@ -72,6 +78,7 @@ const ESTACIONES = [
     lat: 38.3420,
     lon: -0.7710,
     ocm_id: 204186,
+    iberdrola_web_id: 5849,
   },
 ];
 
@@ -144,7 +151,89 @@ async function consultarIberdrola(estacion) {
   return disponible;
 }
 
-// ─── Fuente B: OpenChargeMap (fallback gratuito) ─────────────────────────────
+// ─── Fuente B: Web Iberdrola (endpoint público del mapa) ───────────────────
+async function consultarIberdrolaWeb(estacion) {
+  if (!estacion.iberdrola_web_id) {
+    throw new Error(`Falta iberdrola_web_id para ${estacion.location_name}`);
+  }
+
+  const url = 'https://www.iberdrola.es/o/webclipb/iberdrola/puntosrecargacontroller/getDatosPuntoRecarga';
+  const headers = {
+    Accept: 'application/json, text/javascript, */*; q=0.01',
+    'Content-Type': 'application/json;charset=UTF-8',
+    'X-Requested-With': 'XMLHttpRequest',
+    Origin: 'https://www.iberdrola.es',
+    Referer: 'https://www.iberdrola.es/movilidad-electrica/puntos-de-recarga',
+    'User-Agent': 'Mozilla/5.0 (compatible; estado-cargadores-aspe/1.0)',
+  };
+
+  if (IBERDROLA_WEB_COOKIE) {
+    headers.Cookie = IBERDROLA_WEB_COOKIE;
+  }
+
+  const body = {
+    dto: { cuprId: [estacion.iberdrola_web_id] },
+    language: 'es',
+  };
+
+  const respuesta = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (!respuesta.ok) {
+    throw new Error(`Iberdrola web HTTP ${respuesta.status}`);
+  }
+
+  const datos = await respuesta.json();
+  return deducirDisponibilidadIberdrolaWeb(datos);
+}
+
+function deducirDisponibilidadIberdrolaWeb(datos) {
+  const candidatos = extraerValoresEscalares(datos);
+
+  const tokensLibre = ['disponible', 'libre', 'available', 'available now', 'free'];
+  const tokensOcupado = ['ocupado', 'en uso', 'occupied', 'in use', 'busy', 'reservado', 'charging'];
+
+  for (const valor of candidatos) {
+    if (typeof valor === 'boolean') return valor;
+
+    const texto = String(valor).toLowerCase().trim();
+    if (!texto) continue;
+
+    if (tokensLibre.some((token) => texto.includes(token))) return true;
+    if (tokensOcupado.some((token) => texto.includes(token))) return false;
+  }
+
+  throw new Error('No se pudo interpretar estado en respuesta de Iberdrola web');
+}
+
+function extraerValoresEscalares(nodo, salida = []) {
+  if (nodo == null) return salida;
+
+  if (Array.isArray(nodo)) {
+    for (const item of nodo) extraerValoresEscalares(item, salida);
+    return salida;
+  }
+
+  const tipo = typeof nodo;
+  if (tipo === 'string' || tipo === 'number' || tipo === 'boolean') {
+    salida.push(nodo);
+    return salida;
+  }
+
+  if (tipo === 'object') {
+    for (const valor of Object.values(nodo)) {
+      extraerValoresEscalares(valor, salida);
+    }
+  }
+
+  return salida;
+}
+
+// ─── Fuente C: OpenChargeMap (fallback gratuito) ─────────────────────────────
 /**
  * Consulta el estado de un cargador por geolocalización en OpenChargeMap.
  * Menos preciso que la API directa, pero sirve como respaldo.
@@ -197,9 +286,32 @@ async function consultarOpenChargeMap(estacion) {
     : [...datos].sort((a, b) => (a.AddressInfo?.Distance ?? Infinity) - (b.AddressInfo?.Distance ?? Infinity))[0];
   const conexiones = punto.Connections ?? [];
 
-  // StatusType.IsOperational indica si el punto está operativo y disponible.
-  const disponible = conexiones.some((c) => c.StatusType?.IsOperational === true);
+  // En OCM "IsOperational" no implica necesariamente "Available" (puede estar "Occupied").
+  const disponible = calcularDisponibilidadDesdeConexiones(conexiones);
   return disponible;
+}
+
+function calcularDisponibilidadDesdeConexiones(conexiones = []) {
+  if (!conexiones.length) return false;
+
+  const tieneDisponible = conexiones.some((conexion) => {
+    const titulo = String(conexion?.StatusType?.Title ?? '').toLowerCase();
+    const estadoId = conexion?.StatusType?.ID;
+    return estadoId === 50 || titulo.includes('available') || titulo.includes('disponible') || titulo.includes('libre');
+  });
+
+  if (tieneDisponible) return true;
+
+  const hayOcupado = conexiones.some((conexion) => {
+    const titulo = String(conexion?.StatusType?.Title ?? '').toLowerCase();
+    const estadoId = conexion?.StatusType?.ID;
+    return estadoId === 60 || titulo.includes('occupied') || titulo.includes('in use') || titulo.includes('ocupado') || titulo.includes('en uso');
+  });
+
+  if (hayOcupado) return false;
+
+  // Fallback para estados no documentados.
+  return conexiones.some((conexion) => conexion?.StatusType?.IsOperational === true);
 }
 
 // ─── Orquestador: obtener estado de una estación ─────────────────────────────
@@ -216,6 +328,18 @@ async function obtenerEstado(estacion) {
     } catch (errIberdrola) {
       console.warn(`API Iberdrola no disponible para ${estacion.location_name}: ${errIberdrola.message}`);
     }
+  }
+
+  // Endpoint web de Iberdrola (sin API privada), por cuprId.
+  try {
+    const disponible = await conReintentos(
+      () => consultarIberdrolaWeb(estacion),
+      MAX_RETRIES,
+      `Iberdrola Web · ${estacion.location_name}`,
+    );
+    return { ...estacion, is_available: disponible, fuente: 'iberdrola-web' };
+  } catch (errIberdrolaWeb) {
+    console.warn(`Web Iberdrola no disponible para ${estacion.location_name}: ${errIberdrolaWeb.message}`);
   }
 
   // Fuente principal gratuita: OpenChargeMap.

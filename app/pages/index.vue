@@ -260,7 +260,7 @@ useSeoMeta({
 
       <!-- ════════ FOOTER ════════ -->
       <footer class="border-t border-slate-800 pt-4 text-center text-xs text-slate-600">
-        Datos actualizados cada 15 minutos por GitHub Actions · Fuentes: Iberdrola / OpenChargeMap ·
+        Datos actualizados cada 15 minutos por Supabase Cron + Edge Functions · Fuente principal: OpenChargeMap ·
         <a
           href="https://github.com/melenas1414/Estado-cargadores-del-ayuntamiento-de-Aspe"
           target="_blank"
