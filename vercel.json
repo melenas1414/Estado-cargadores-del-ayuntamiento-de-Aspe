@@ -2,11 +2,6 @@
   "framework": {
     "preset": "nuxt"
   },
-  "functions": {
-    "api/**": {
-      "maxDuration": 10
-    }
-  },
   "headers": [
     {
       "source": "/(.*)",
