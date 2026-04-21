@@ -136,9 +136,14 @@ jobs:
           version: latest
 
       - name: 🔐 Sincronizar secreto GOOGLE_PLACES_API_KEY
-        if: ${{ secrets.GOOGLE_PLACES_API_KEY != '' }}
-        run: supabase secrets set "GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }}" --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+        run: |
+          if [ -n "$GOOGLE_PLACES_API_KEY" ]; then
+            supabase secrets set "GOOGLE_PLACES_API_KEY=$GOOGLE_PLACES_API_KEY" --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+          else
+            echo "GOOGLE_PLACES_API_KEY no definido en GitHub; se mantiene el valor existente en Supabase"
+          fi
         env:
+          GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: 🚀 Desplegar monitor-cargadores
