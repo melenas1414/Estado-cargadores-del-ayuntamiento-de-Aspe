@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { Zap, CheckCircle, XCircle, Clock } from 'lucide-vue-next';
 
+interface ConnectorDetail {
+  type: string;
+  power_kw: number | null;
+  total: number;
+  available: number;
+}
+
 interface Props {
   stationId:    string;
   locationName: string;
@@ -10,6 +17,7 @@ interface Props {
   availableConnectors?: number | null;
   totalConnectors?: number | null;
   connectorType?: string | null;
+  connectors?: ConnectorDetail[] | null;
 }
 
 const props = defineProps<Props>();
@@ -56,6 +64,18 @@ const conectoresTexto = computed(() => {
 
   return 'Sin detalle de conectores';
 });
+
+const resumenConectores = computed(() => {
+  const total = props.totalConnectors;
+  const libres = props.availableConnectors;
+
+  if (typeof total === 'number' && total >= 0 && typeof libres === 'number' && libres >= 0) {
+    const ocupados = Math.max(0, total - libres);
+    return `${total} total · ${ocupados} ocupados · ${libres} libres`;
+  }
+
+  return 'Sin resumen de conectores';
+});
 </script>
 
 <template>
@@ -90,16 +110,37 @@ const conectoresTexto = computed(() => {
       <p class="mt-0.5 text-xs text-slate-500">{{ stationId }}</p>
     </div>
 
-    <!-- Detalles: potencia y última actualización -->
-    <div class="mt-auto space-y-1 text-xs text-slate-500">
+    <!-- Detalles: conectores por tipo o resumen -->
+    <div class="mt-auto space-y-1.5 text-xs text-slate-500">
       <p class="text-[11px] text-slate-400">
+        {{ resumenConectores }}
+      </p>
+
+      <!-- Lista por tipo de conector -->
+      <template v-if="connectors && connectors.length">
+        <div
+          v-for="c in connectors"
+          :key="c.type"
+          class="flex items-center justify-between text-[11px]"
+        >
+          <span class="flex items-center gap-1 text-slate-400">
+            <Zap class="h-3 w-3 text-blue-400" />
+            {{ c.type }}{{ c.power_kw ? ` · ${c.power_kw} kW` : '' }}
+          </span>
+          <span
+            class="font-medium"
+            :class="c.available > 0 ? 'text-emerald-400' : 'text-rose-400'"
+          >
+            {{ c.available }}/{{ c.total }} libres
+          </span>
+        </div>
+      </template>
+      <!-- Fallback sin detalle por tipo -->
+      <p v-else class="text-[11px] text-slate-400">
         {{ conectoresTexto }}
       </p>
-      <div class="flex items-center justify-between">
-        <span class="flex items-center gap-1">
-          <Zap class="h-3 w-3 text-blue-400" />
-          {{ powerKw }} kW{{ connectorType ? ` · ${connectorType}` : '' }}
-        </span>
+
+      <div class="flex items-center justify-end pt-0.5">
         <span class="flex items-center gap-1">
           <Clock class="h-3 w-3" />
           Act. {{ horaActualizacion }}

@@ -10,15 +10,23 @@ interface Franja {
   hora:           number;
   disponibilidad: number;
   conDatos:       boolean;
+  muestras?:      number;
 }
 
 const props = defineProps<{
   mejorHora:            number;
   probabilidad:         number;
   diaSemana:            string;
+  fechaObjetivo?:       string;
+  diasHaciaFuturo?:     number;
   franjas:              Franja[];
   horasRecomendadas:    number[];
   haySuficientesDatos:  boolean;
+  diasConDatos?:        number;
+  muestrasTotales?:     number;
+  diasMinimosRecomendados?: number;
+  diasFaltantesEstimados?: number;
+  ventanaHistoricaDias?: number;
 }>();
 
 function formatHora(h: number): string {
@@ -57,6 +65,11 @@ const colorConfianza = computed(() => {
       </h2>
     </div>
 
+    <p class="mb-4 text-xs text-slate-500">
+      Pronóstico para dentro de <span class="font-semibold text-slate-300">{{ diasHaciaFuturo ?? 0 }}</span> días
+      <span v-if="fechaObjetivo">({{ fechaObjetivo }})</span>
+    </p>
+
     <!-- Sin datos suficientes -->
     <div
       v-if="!haySuficientesDatos"
@@ -65,7 +78,13 @@ const colorConfianza = computed(() => {
       <CalendarCheck class="h-8 w-8 text-slate-600" />
       <p class="text-sm text-slate-500">
         Acumulando datos históricos…<br />
-        <span class="text-xs">Disponible tras varios días de monitorización.</span>
+        <span class="text-xs">
+          Recomendado: al menos {{ diasMinimosRecomendados ?? 28 }} días de histórico.
+          <template v-if="diasFaltantesEstimados !== undefined">Faltan aprox. {{ diasFaltantesEstimados }} días.</template>
+        </span>
+      </p>
+      <p class="text-[11px] text-slate-600">
+        {{ diasConDatos ?? 0 }} días equivalentes con datos · {{ muestrasTotales ?? 0 }} muestras analizadas
       </p>
     </div>
 
@@ -142,6 +161,10 @@ const colorConfianza = computed(() => {
         <!-- Espacio para etiquetas inferiores -->
         <div class="mt-5" />
       </div>
+
+      <p class="mt-2 text-[11px] text-slate-600">
+        Ventana analizada: últimos {{ ventanaHistoricaDias ?? 56 }} días · {{ muestrasTotales ?? 0 }} muestras
+      </p>
     </template>
   </div>
 </template>

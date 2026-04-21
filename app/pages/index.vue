@@ -13,9 +13,11 @@
 import { Zap, RefreshCw, MapPin, Wifi } from 'lucide-vue-next';
 
 type Periodo = 'today' | '7d' | '30d';
+type HorizontePrediccion = 0 | 1 | 2 | 3 | 7 | 14;
 
 // ─── Estado de período seleccionado ─────────────────────────────────────────
 const periodo = ref<Periodo>('7d');
+const diasPrediccion = ref<HorizontePrediccion>(0);
 
 // ─── Datos en tiempo real (cargadores) ──────────────────────────────────────
 const {
@@ -43,7 +45,11 @@ const {
 const {
   data:    prediccionData,
   pending: prediccionPending,
-} = useFetch('/api/analytics/prediction', { lazy: true });
+} = useFetch('/api/analytics/prediction', {
+  query: computed(() => ({ dias: diasPrediccion.value })),
+  watch: [diasPrediccion],
+  lazy: true,
+});
 
 // ─── Análisis: métricas ──────────────────────────────────────────────────────
 const {
@@ -118,13 +124,233 @@ const estadoGlobal = computed(() => {
   return { texto: `${conectoresLibres.value}/${conectoresTotales.value} conectores libres`, clase: 'text-amber-400' };
 });
 
-// ─── Meta tags dinámicos ──────────────────────────────────────────────────────
+const disponibilidadPorPunto = computed(() => cargadores.value.map((c: any) => {
+  const total = typeof c.total_connectors === 'number' && c.total_connectors > 0 ? c.total_connectors : 2;
+  const libres = typeof c.available_connectors === 'number' ? c.available_connectors : (c.is_available ? 1 : 0);
+  const ocupados = Math.max(0, total - libres);
+
+  return {
+    stationId: c.station_id,
+    locationName: c.location_name,
+    libres,
+    ocupados,
+    total,
+    googleUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.location_name)}`,
+  };
+}));
+
+const aspeMapEmbedUrl =
+  'https://www.openstreetmap.org/export/embed.html?bbox=-0.775%2C38.340%2C-0.735%2C38.360&layer=mapnik';
+
+const requestUrl = useRequestURL();
+const canonicalUrl = `${requestUrl.origin}${requestUrl.pathname}`;
+
+// ─── SEO estructurado ────────────────────────────────────────────────────────
+// Datos de estaciones para JSON-LD (LocalBusiness por punto de carga)
+const SEO_STATIONS = [
+  { id: 'ESIBE22E0001001', name: 'Cargador Eléctrico Aspe · Av. Carlos Soria',  street: 'Avenida Carlos Soria, 11',  lat: 38.3478, lon: -0.7620 },
+  { id: 'ESIBE22E0001002', name: 'Cargador Eléctrico Aspe · Av. Constitución',  street: 'Avenida Constitución, 42', lat: 38.3490, lon: -0.7638 },
+  { id: 'ESIBE22E0001003', name: 'Cargador Eléctrico Aspe · Av. Padre Ismael',  street: 'Avenida Padre Ismael, 34', lat: 38.3510, lon: -0.7615 },
+  { id: 'ESIBE22E0001004', name: 'Cargador Eléctrico Aspe · Av. Juan Carlos I', street: 'Avenida Juan Carlos I, 36', lat: 38.3445, lon: -0.7660 },
+  { id: 'ESIBE22E0001005', name: 'Cargador Eléctrico Aspe · Calle Orihuela',    street: 'Calle Orihuela, 100',      lat: 38.3525, lon: -0.7580 },
+];
+
 useSeoMeta({
-  title: 'Estado de Carga en Aspe · Cargadores Iberdrola 22 kW',
+  title: 'Cargadores Eléctricos en Aspe (Alicante) · Disponibilidad en Tiempo Real + Mapa',
   description:
-    'Monitor en tiempo real de los 5 cargadores eléctricos del Ayuntamiento de Aspe. Disponibilidad, historial y predicciones basadas en IA.',
-  ogTitle:       'Cargadores EV · Aspe, Alicante',
-  ogDescription: 'Estado en tiempo real · Análisis semanal · Predicción horaria',
+    'Consulta en tiempo real el estado de los 5 puntos de carga eléctrica del Ayuntamiento de Aspe (Alicante). Tipo 2 · 11 kW · Iberdrola. Mapa, disponibilidad libre/ocupado y predicción de mejor hora para cargar tu coche eléctrico.',
+  keywords:
+    'cargadores electricos aspe, puntos de recarga aspe, cargador tipo 2 aspe, cargar coche electrico aspe alicante, iberdrola aspe, punto recarga ayuntamiento aspe, cargador ev aspe, estado cargadores aspe, mapa cargadores aspe, recarga vehiculo electrico aspe, aspe carga electrica, cargadores publicos aspe, cargador 11kw aspe, donde cargar coche electrico aspe',
+  ogTitle: 'Cargadores Eléctricos Aspe · Estado en Tiempo Real',
+  ogDescription:
+    '5 puntos de carga pública en Aspe (Alicante). Tipo 2 · 11 kW. Consulta disponibilidad en tiempo real, mapa y predicción de mejor hora para recargar tu vehículo eléctrico.',
+  ogType: 'website',
+  ogLocale: 'es_ES',
+  ogUrl: canonicalUrl,
+  robots: 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
+  twitterCard: 'summary_large_image',
+  twitterTitle: 'Cargadores Eléctricos en Aspe · Tiempo Real',
+  twitterDescription: '5 puntos de recarga pública en Aspe, Alicante. Tipo 2 · 11 kW · Mapa + IA.',
+});
+
+useHead({
+  htmlAttrs: { lang: 'es' },
+  link: [
+    { rel: 'canonical', href: canonicalUrl },
+  ],
+  meta: [
+    // Geo meta tags para SEO local
+    { name: 'geo.region',    content: 'ES-VC' },
+    { name: 'geo.placename', content: 'Aspe, Alicante, España' },
+    { name: 'geo.position',  content: '38.3485;-0.7639' },
+    { name: 'ICBM',          content: '38.3485, -0.7639' },
+  ],
+  script: [
+    // ── 1. WebSite ────────────────────────────────────────────────────────────
+    {
+      type: 'application/ld+json',
+      children: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        name: 'Estado de Cargadores de Aspe',
+        alternateName: 'Cargadores Aspe',
+        url: canonicalUrl,
+        description:
+          'Monitor en tiempo real de disponibilidad de cargadores eléctricos públicos en Aspe (Alicante). Fuente: Google Places · Actualización cada 15 min.',
+        inLanguage: 'es-ES',
+        creator:   { '@type': 'Organization', name: 'OnlineExpansions', url: 'https://onlineexpansions.com' },
+        publisher: { '@type': 'Organization', name: 'OnlineExpansions', url: 'https://onlineexpansions.com' },
+        about: {
+          '@type': 'City',
+          name: 'Aspe',
+          containedInPlace: { '@type': 'AdministrativeArea', name: 'Alicante' },
+        },
+      }),
+    },
+
+    // ── 2. ItemList · LocalBusiness por punto de carga ────────────────────────
+    {
+      type: 'application/ld+json',
+      children: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'ItemList',
+        name: 'Puntos de carga eléctrica pública en Aspe, Alicante',
+        description:
+          '5 puntos de recarga para vehículos eléctricos del Ayuntamiento de Aspe gestionados por Iberdrola. Conector Tipo 2 · 11 kW.',
+        numberOfItems: SEO_STATIONS.length,
+        itemListElement: SEO_STATIONS.map((s, i) => ({
+          '@type': 'ListItem',
+          position: i + 1,
+          item: {
+            '@type': 'LocalBusiness',
+            '@id': `${canonicalUrl}#${s.id}`,
+            name: s.name,
+            description: `Punto de carga eléctrica pública en Aspe (Alicante). Conector Tipo 2 · 11 kW AC. ID REEV: ${s.id}. Gestionado por Iberdrola.`,
+            url: canonicalUrl,
+            address: {
+              '@type': 'PostalAddress',
+              streetAddress:   s.street,
+              addressLocality: 'Aspe',
+              addressRegion:   'Alicante',
+              postalCode:      '03680',
+              addressCountry:  'ES',
+            },
+            geo: {
+              '@type':    'GeoCoordinates',
+              latitude:   s.lat,
+              longitude:  s.lon,
+            },
+            amenityFeature: [
+              { '@type': 'LocationFeatureSpecification', name: 'Conector Tipo 2 (IEC 62196)', value: true },
+              { '@type': 'LocationFeatureSpecification', name: 'Potencia 11 kW AC',           value: true },
+              { '@type': 'LocationFeatureSpecification', name: 'Carga pública 24h',            value: true },
+              { '@type': 'LocationFeatureSpecification', name: '2 conectores por punto',       value: true },
+            ],
+            openingHoursSpecification: {
+              '@type':      'OpeningHoursSpecification',
+              dayOfWeek:    ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+              opens:        '00:00',
+              closes:       '23:59',
+            },
+            areaServed: {
+              '@type': 'City',
+              name: 'Aspe',
+              containedInPlace: { '@type': 'AdministrativeArea', name: 'Alicante' },
+            },
+            servesCuisine: null,
+          },
+        })),
+      }),
+    },
+
+    // ── 3. FAQPage · preguntas frecuentes sobre cargadores en Aspe ────────────
+    {
+      type: 'application/ld+json',
+      children: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: [
+          {
+            '@type': 'Question',
+            name: '¿Dónde hay cargadores para coches eléctricos en Aspe?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Aspe dispone de 5 puntos de carga pública gestionados por Iberdrola: Avenida Carlos Soria 11, Avenida Constitución 42, Avenida Padre Ismael 34, Avenida Juan Carlos I 36 y Calle Orihuela 100. Todos en el término municipal de Aspe (Alicante), código postal 03680.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: '¿Qué tipo de conector tienen los cargadores eléctricos de Aspe?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Los cargadores de Aspe disponen de conectores Tipo 2 (IEC 62196) con una potencia de 11 kW en corriente alterna (AC). Este estándar es compatible con la gran mayoría de vehículos eléctricos e híbridos enchufables europeos.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: '¿Cuántos conectores tiene cada punto de recarga de Aspe?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Cada punto de carga en Aspe dispone de 2 conectores Tipo 2 de 11 kW, lo que permite cargar dos vehículos simultáneamente. En total, Aspe cuenta con 10 conectores repartidos en 5 ubicaciones.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: '¿Son gratuitos los cargadores eléctricos del Ayuntamiento de Aspe?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Los puntos de recarga del Ayuntamiento de Aspe están gestionados por Iberdrola. Para conocer las tarifas y condiciones más actualizadas, consulta la aplicación oficial Iberdrola e-mobility o el portal del Ayuntamiento de Aspe.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: '¿Cuál es la mejor hora para cargar el coche eléctrico en Aspe?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Según el análisis histórico de disponibilidad, los cargadores de Aspe suelen estar más libres durante las primeras horas de la mañana (7:00-9:00h) y al mediodía (13:00-15:00h). En esta página encontrarás una predicción actualizada basada en inteligencia artificial.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: '¿Cómo saber si los cargadores de Aspe están libres ahora mismo?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Puedes consultar el estado en tiempo real directamente en esta página. Los datos se actualizan cada 15 minutos a través de la API de Google Places. Verás el estado libre u ocupado de cada uno de los 5 puntos de recarga de Aspe.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: '¿Hay cargadores rápidos (DC) en Aspe?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'Los cargadores públicos de Aspe son de tipo semi-rápido con 11 kW en corriente alterna (AC). Actualmente no hay cargadores ultra-rápidos de corriente continua (DC) tipo CCS Combo 2 o CHAdeMO en Aspe.',
+            },
+          },
+          {
+            '@type': 'Question',
+            name: '¿Con qué frecuencia se actualiza el estado de los cargadores de Aspe?',
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: 'El estado de los cargadores de Aspe se actualiza automáticamente cada 15 minutos mediante Supabase Edge Functions y la API oficial de Google Places, ofreciendo información de disponibilidad casi en tiempo real.',
+            },
+          },
+        ],
+      }),
+    },
+
+    // ── 4. BreadcrumbList ─────────────────────────────────────────────────────
+    {
+      type: 'application/ld+json',
+      children: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Inicio',                          item: canonicalUrl },
+          { '@type': 'ListItem', position: 2, name: 'Cargadores Eléctricos en Aspe',   item: canonicalUrl },
+        ],
+      }),
+    },
+  ],
 });
 </script>
 
@@ -178,6 +404,29 @@ useSeoMeta({
         </div>
       </header>
 
+      <!-- ════════ DISPONIBILIDAD POR PUNTO ════════ -->
+      <section aria-labelledby="disponibilidad-punto">
+        <h2
+          id="disponibilidad-punto"
+          class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500"
+        >
+          Disponibilidad por Cargador
+        </h2>
+
+        <div class="flex gap-2 overflow-x-auto pb-1">
+          <article
+            v-for="p in disponibilidadPorPunto"
+            :key="p.stationId"
+            class="min-w-[220px] rounded-xl border border-slate-800 bg-slate-900/70 p-3"
+          >
+            <p class="text-[11px] font-semibold tracking-wide text-slate-300">{{ p.stationId }}</p>
+            <p class="mt-0.5 line-clamp-1 text-xs text-slate-500">{{ p.locationName }}</p>
+            <p class="mt-2 text-sm font-semibold text-white">{{ p.libres }}/{{ p.total }} libres</p>
+            <p class="text-[11px] text-slate-400">{{ p.ocupados }} ocupados</p>
+          </article>
+        </div>
+      </section>
+
       <!-- ════════ ERROR ════════ -->
       <div
         v-if="cargadoresError"
@@ -222,7 +471,44 @@ useSeoMeta({
             :available-connectors="c.available_connectors"
             :total-connectors="c.total_connectors"
             :connector-type="c.connector_type"
+            :connectors="c.connectors"
           />
+        </div>
+      </section>
+
+      <!-- ════════ MAPA DE UBICACIONES ════════ -->
+      <section aria-labelledby="mapa-ubicaciones">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h2
+            id="mapa-ubicaciones"
+            class="text-xs font-semibold uppercase tracking-wider text-slate-500"
+          >
+            Mapa de Ubicaciones
+          </h2>
+          <span class="text-[11px] text-slate-500">Aspe · Alicante</span>
+        </div>
+
+        <div class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
+          <iframe
+            :src="aspeMapEmbedUrl"
+            title="Mapa de puntos de carga en Aspe"
+            class="h-72 w-full"
+            loading="lazy"
+            referrerpolicy="no-referrer-when-downgrade"
+          />
+          <div class="grid grid-cols-1 gap-2 border-t border-slate-800 p-3 sm:grid-cols-2 lg:grid-cols-3">
+            <a
+              v-for="p in disponibilidadPorPunto"
+              :key="`map-${p.stationId}`"
+              :href="p.googleUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-slate-700 hover:text-white"
+            >
+              <span class="block font-medium">{{ p.stationId }} · {{ p.libres }}/{{ p.total }}</span>
+              <span class="block truncate text-slate-500">{{ p.locationName }}</span>
+            </a>
+          </div>
         </div>
       </section>
 
@@ -235,8 +521,24 @@ useSeoMeta({
           >
             Análisis e Inteligencia
           </h2>
-          <!-- Filtro de período -->
-          <FilterButtons v-model="periodo" />
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Filtro de período -->
+            <FilterButtons v-model="periodo" />
+            <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
+              IA en
+              <select
+                v-model.number="diasPrediccion"
+                class="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 outline-none"
+              >
+                <option :value="0">hoy</option>
+                <option :value="1">1 día</option>
+                <option :value="2">2 días</option>
+                <option :value="3">3 días</option>
+                <option :value="7">7 días</option>
+                <option :value="14">14 días</option>
+              </select>
+            </label>
+          </div>
         </div>
 
         <!-- ── Fila 1: heatmap + predicción ───────────────────────────── -->
@@ -255,9 +557,16 @@ useSeoMeta({
             :mejor-hora="prediccionData.mejorHora"
             :probabilidad="prediccionData.probabilidad"
             :dia-semana="prediccionData.diaSemana"
+            :fecha-objetivo="prediccionData.fechaObjetivo"
+            :dias-hacia-futuro="prediccionData.diasHaciaFuturo"
             :franjas="prediccionData.franjas"
             :horas-recomendadas="prediccionData.horasRecomendadas"
             :hay-suficientes-datos="prediccionData.haySuficientesDatos"
+            :dias-con-datos="prediccionData.diasConDatos"
+            :muestras-totales="prediccionData.muestrasTotales"
+            :dias-minimos-recomendados="prediccionData.diasMinimosRecomendados"
+            :dias-faltantes-estimados="prediccionData.diasFaltantesEstimados"
+            :ventana-historica-dias="prediccionData.ventanaHistoricaDias"
           />
         </div>
 
@@ -283,6 +592,16 @@ useSeoMeta({
           class="text-slate-500 underline-offset-2 hover:text-slate-400 hover:underline"
         >
           Código fuente
+        </a>
+        <span class="mx-1">·</span>
+        Desarrollado por
+        <a
+          href="https://onlineexpansions.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-slate-400 underline-offset-2 hover:text-white hover:underline"
+        >
+          OnlineExpansions
         </a>
       </footer>
 

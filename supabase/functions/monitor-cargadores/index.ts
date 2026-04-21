@@ -20,6 +20,7 @@ type StationResult = {
   total_connectors: number | null
   power_kw: number | null
   connector_type: string | null
+  connectors: ConnectorDetail[]
   source: string
 }
 
@@ -43,11 +44,19 @@ type GooglePlacesResponse = {
   places?: GooglePlace[]
 }
 
+type ConnectorDetail = {
+  type: string
+  power_kw: number | null
+  total: number
+  available: number
+}
+
 type ConnectorSnapshot = {
   available_connectors: number | null
   total_connectors: number | null
   power_kw: number | null
   connector_type: string | null
+  connectors: ConnectorDetail[]
 }
 
 // ─── Estaciones ───────────────────────────────────────────────────────────────
@@ -55,7 +64,7 @@ type ConnectorSnapshot = {
 const STATIONS: Station[] = [
   {
     station_id: 'ESIBE22E0001001',
-    location_name: 'Av. Navarra 67, Aspe',
+    location_name: 'Av. Carlos Soria, 11',
     google_place_id: 'ChIJfc4rIMrHYw0RkvWSsMGDHxc',
   },
   {
@@ -97,7 +106,7 @@ function parseEvChargeStatus(
   if (!connectorAggregation?.length) {
     return {
       status: 'SIN_DATOS_DINAMICOS',
-      snapshot: { available_connectors: null, total_connectors: null, power_kw: null, connector_type: null },
+      snapshot: { available_connectors: null, total_connectors: null, power_kw: null, connector_type: null, connectors: [] },
     }
   }
 
@@ -115,15 +124,49 @@ function parseEvChargeStatus(
   const rawType = connectorAggregation[0]?.type ?? null
   const connector_type = rawType ? (CONNECTOR_TYPE_LABELS[rawType] ?? rawType) : null
 
+  const connectors: ConnectorDetail[] = connectorAggregation.map((c) => ({
+    type: c.type ? (CONNECTOR_TYPE_LABELS[c.type] ?? c.type) : 'Desconocido',
+    power_kw: c.maxChargeRateKw ?? null,
+    total: c.count ?? 0,
+    available: c.availableCount ?? 0,
+  }))
+
   const snapshot: ConnectorSnapshot = {
     available_connectors: hasData ? totalAvailable : null,
     total_connectors: totalConnectors > 0 ? totalConnectors : null,
     power_kw: maxKw > 0 ? maxKw : null,
     connector_type,
+    connectors,
   }
 
   if (!hasData) return { status: 'SIN_DATOS_DINAMICOS', snapshot }
   return { status: totalAvailable > 0 ? 'DISPONIBLE' : 'OCUPADO', snapshot }
+}
+
+function normalizeSnapshotForAspe(snapshot: ConnectorSnapshot): { status: EvAvailabilityStatus; snapshot: ConnectorSnapshot } {
+  const tipo2 = snapshot.connectors.find((c) => c.type === 'Tipo 2')
+  const availableRaw = tipo2?.available ?? snapshot.available_connectors ?? 0
+  const available = Math.max(0, Math.min(2, availableRaw))
+
+  const normalizedSnapshot: ConnectorSnapshot = {
+    available_connectors: available,
+    total_connectors: 2,
+    power_kw: 11,
+    connector_type: 'Tipo 2',
+    connectors: [
+      {
+        type: 'Tipo 2',
+        power_kw: 11,
+        total: 2,
+        available,
+      },
+    ],
+  }
+
+  return {
+    status: available > 0 ? 'DISPONIBLE' : 'OCUPADO',
+    snapshot: normalizedSnapshot,
+  }
 }
 
 async function fetchGooglePlacesStatus(
@@ -174,17 +217,26 @@ async function fetchGooglePlacesStatus(
 
   // Si Google no devuelve el lugar (posiblemente todos ocupados), devolvemos OCUPADO
   if (!place) {
+    const normalized = normalizeSnapshotForAspe({
+      available_connectors: 0,
+      total_connectors: null,
+      power_kw: null,
+      connector_type: null,
+      connectors: [],
+    })
+
     return {
       googleName: null,
-      status: 'OCUPADO',
-      snapshot: { available_connectors: 0, total_connectors: null, power_kw: null, connector_type: null },
+      status: normalized.status,
+      snapshot: normalized.snapshot,
     }
   }
 
   const googleName = place.displayName?.text ?? null
-  const { status, snapshot } = parseEvChargeStatus(place.evChargeOptions?.connectorAggregation)
+  const parsed = parseEvChargeStatus(place.evChargeOptions?.connectorAggregation)
+  const normalized = normalizeSnapshotForAspe(parsed.snapshot)
 
-  return { googleName, status, snapshot }
+  return { googleName, status: normalized.status, snapshot: normalized.snapshot }
 }
 
 // ─── Orquestador principal ────────────────────────────────────────────────────
@@ -207,6 +259,7 @@ async function checkAspeStationsStatus(
           total_connectors: snapshot.total_connectors,
           power_kw: snapshot.power_kw,
           connector_type: snapshot.connector_type,
+          connectors: snapshot.connectors,
           source: 'google-places',
         }
       } catch (error) {
@@ -220,6 +273,7 @@ async function checkAspeStationsStatus(
           total_connectors: null,
           power_kw: null,
           connector_type: null,
+          connectors: [],
           source: `google-places-error:${error instanceof Error ? error.message : 'unknown'}`,
         }
       }
@@ -301,6 +355,7 @@ Deno.serve(async (_req) => {
       total_connectors: r.total_connectors,
       power_kw: r.power_kw,
       connector_type: r.connector_type,
+      connectors: r.connectors,
       source: r.source,
     }))
 
