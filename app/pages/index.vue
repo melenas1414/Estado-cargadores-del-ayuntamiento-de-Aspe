@@ -15,6 +15,14 @@ import { Zap, RefreshCw, MapPin, Wifi } from 'lucide-vue-next';
 type Periodo = 'today' | '7d' | '30d';
 type HorizontePrediccion = 0 | 1 | 2 | 3 | 7 | 14;
 
+const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
+  ESIBE22E0001001: { lat: 38.3478, lon: -0.7620 },
+  ESIBE22E0001002: { lat: 38.3490, lon: -0.7638 },
+  ESIBE22E0001003: { lat: 38.3510, lon: -0.7615 },
+  ESIBE22E0001004: { lat: 38.3445, lon: -0.7660 },
+  ESIBE22E0001005: { lat: 38.3525, lon: -0.7580 },
+};
+
 // ─── Estado de período seleccionado ─────────────────────────────────────────
 const periodo = ref<Periodo>('7d');
 const diasPrediccion = ref<HorizontePrediccion>(0);
@@ -92,15 +100,22 @@ onBeforeUnmount(() => {
 const cargadores   = computed(() => cargadoresData.value?.cargadores ?? []);
 const ultimaActualizacion = computed(() => cargadoresData.value?.ultimaActualizacion ?? '');
 
+function libresPorCargador(c: any) {
+  const kw = Number(c.power_kw);
+  if (kw === 22) return 2;
+  if (kw === 11) return 1;
+  if (typeof c.available_connectors === 'number') return Math.max(0, Math.min(2, c.available_connectors));
+  return c.is_available ? 1 : 0;
+}
+
 const libres   = computed(() => cargadores.value.filter((c: any) => c.is_available).length);
 const ocupados = computed(() => cargadores.value.filter((c: any) => !c.is_available).length);
 const conectoresLibres = computed(() => cargadores.value.reduce((sum: number, c: any) => {
-  if (typeof c.available_connectors === 'number') return sum + c.available_connectors;
-  return sum + (c.is_available ? 1 : 0);
+  return sum + libresPorCargador(c);
 }, 0));
 const conectoresTotales = computed(() => cargadores.value.reduce((sum: number, c: any) => {
   if (typeof c.total_connectors === 'number' && c.total_connectors > 0) return sum + c.total_connectors;
-  return sum + 1;
+  return sum + 2;
 }, 0));
 
 const horaLegible = computed(() => {
@@ -126,7 +141,7 @@ const estadoGlobal = computed(() => {
 
 const disponibilidadPorPunto = computed(() => cargadores.value.map((c: any) => {
   const total = typeof c.total_connectors === 'number' && c.total_connectors > 0 ? c.total_connectors : 2;
-  const libres = typeof c.available_connectors === 'number' ? c.available_connectors : (c.is_available ? 1 : 0);
+  const libres = libresPorCargador(c);
   const ocupados = Math.max(0, total - libres);
 
   return {
@@ -135,12 +150,11 @@ const disponibilidadPorPunto = computed(() => cargadores.value.map((c: any) => {
     libres,
     ocupados,
     total,
+    lat: STATION_COORDS[c.station_id]?.lat,
+    lon: STATION_COORDS[c.station_id]?.lon,
     googleUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.location_name)}`,
   };
 }));
-
-const aspeMapEmbedUrl =
-  'https://www.openstreetmap.org/export/embed.html?bbox=-0.775%2C38.340%2C-0.735%2C38.360&layer=mapnik';
 
 const requestUrl = useRequestURL();
 const canonicalUrl = `${requestUrl.origin}${requestUrl.pathname}`;
@@ -405,28 +419,6 @@ useHead({
       </header>
 
       <!-- ════════ DISPONIBILIDAD POR PUNTO ════════ -->
-      <section aria-labelledby="disponibilidad-punto">
-        <h2
-          id="disponibilidad-punto"
-          class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500"
-        >
-          Disponibilidad por Cargador
-        </h2>
-
-        <div class="flex gap-2 overflow-x-auto pb-1">
-          <article
-            v-for="p in disponibilidadPorPunto"
-            :key="p.stationId"
-            class="min-w-[220px] rounded-xl border border-slate-800 bg-slate-900/70 p-3"
-          >
-            <p class="text-[11px] font-semibold tracking-wide text-slate-300">{{ p.stationId }}</p>
-            <p class="mt-0.5 line-clamp-1 text-xs text-slate-500">{{ p.locationName }}</p>
-            <p class="mt-2 text-sm font-semibold text-white">{{ p.libres }}/{{ p.total }} libres</p>
-            <p class="text-[11px] text-slate-400">{{ p.ocupados }} ocupados</p>
-          </article>
-        </div>
-      </section>
-
       <!-- ════════ ERROR ════════ -->
       <div
         v-if="cargadoresError"
@@ -468,8 +460,8 @@ useHead({
             :is-available="c.is_available"
             :power-kw="c.power_kw"
             :updated-at="c.created_at"
-            :available-connectors="c.available_connectors"
-            :total-connectors="c.total_connectors"
+            :available-connectors="libresPorCargador(c)"
+            :total-connectors="2"
             :connector-type="c.connector_type"
             :connectors="c.connectors"
           />
@@ -483,19 +475,18 @@ useHead({
             id="mapa-ubicaciones"
             class="text-xs font-semibold uppercase tracking-wider text-slate-500"
           >
-            Mapa de Ubicaciones
+            Mapa y Disponibilidad por Cargador
           </h2>
           <span class="text-[11px] text-slate-500">Aspe · Alicante</span>
         </div>
 
         <div class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
-          <iframe
-            :src="aspeMapEmbedUrl"
-            title="Mapa de puntos de carga en Aspe"
-            class="h-72 w-full"
-            loading="lazy"
-            referrerpolicy="no-referrer-when-downgrade"
-          />
+          <ClientOnly>
+            <ChargersMap :points="disponibilidadPorPunto" />
+            <template #fallback>
+              <div class="h-72 w-full animate-pulse bg-slate-900" />
+            </template>
+          </ClientOnly>
           <div class="grid grid-cols-1 gap-2 border-t border-slate-800 p-3 sm:grid-cols-2 lg:grid-cols-3">
             <a
               v-for="p in disponibilidadPorPunto"

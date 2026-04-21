@@ -64,7 +64,7 @@ type ConnectorSnapshot = {
 const STATIONS: Station[] = [
   {
     station_id: 'ESIBE22E0001001',
-    location_name: 'Av. Carlos Soria, 11',
+    location_name: 'Av. Carlos Soria, 11, Aspe',
     google_place_id: 'ChIJfc4rIMrHYw0RkvWSsMGDHxc',
   },
   {
