@@ -5,7 +5,6 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 type Station = {
   station_id: string
   location_name: string
-  ocm_id: number
 }
 
 type EvAvailabilityStatus = 'DISPONIBLE' | 'OCUPADO' | 'SIN_DATOS_DINAMICOS'
@@ -44,18 +43,14 @@ type ConnectorSnapshot = {
   total_connectors: number | null
 }
 
-type OcmPoint = {
-  Connections?: Array<{ StatusType?: { ID?: number; Title?: string; IsOperational?: boolean } }>
-}
-
 // ─── Estaciones ───────────────────────────────────────────────────────────────
 
 const STATIONS: Station[] = [
-  { station_id: 'ESIBE22E0001001', location_name: 'Av. Navarra 67, Aspe', ocm_id: 216923 },
-  { station_id: 'ESIBE22E0001002', location_name: 'Av. Constitución 42, Aspe', ocm_id: 204184 },
-  { station_id: 'ESIBE22E0001003', location_name: 'Av. Padre Ismael 34, Aspe', ocm_id: 204183 },
-  { station_id: 'ESIBE22E0001004', location_name: 'Av. Juan Carlos I 36, Aspe', ocm_id: 204185 },
-  { station_id: 'ESIBE22E0001005', location_name: 'Calle Orihuela 100, Aspe', ocm_id: 204186 },
+  { station_id: 'ESIBE22E0001001', location_name: 'Av. Navarra 67, Aspe' },
+  { station_id: 'ESIBE22E0001002', location_name: 'Av. Constitución 42, Aspe' },
+  { station_id: 'ESIBE22E0001003', location_name: 'Av. Padre Ismael 34, Aspe' },
+  { station_id: 'ESIBE22E0001004', location_name: 'Av. Juan Carlos I 36, Aspe' },
+  { station_id: 'ESIBE22E0001005', location_name: 'Calle Orihuela 100, Aspe' },
 ]
 
 // ─── Google Places API (New) ──────────────────────────────────────────────────
@@ -121,143 +116,27 @@ async function fetchGooglePlacesStatus(
   return { googleName, status, snapshot }
 }
 
-// ─── OpenChargeMap (fallback) ─────────────────────────────────────────────────
-
-function getAvailabilityFromConnections(connections: OcmPoint['Connections'] = []): boolean {
-  if (!connections.length) return false
-
-  const hasAvailable = connections.some((c) => {
-    const title = String(c?.StatusType?.Title ?? '').toLowerCase()
-    return c?.StatusType?.ID === 50 || title.includes('available') || title.includes('disponible') || title.includes('libre')
-  })
-  if (hasAvailable) return true
-
-  const hasOccupied = connections.some((c) => {
-    const title = String(c?.StatusType?.Title ?? '').toLowerCase()
-    return c?.StatusType?.ID === 60 || title.includes('occupied') || title.includes('in use') || title.includes('ocupado')
-  })
-  if (hasOccupied) return false
-
-  return connections.some((c) => c?.StatusType?.IsOperational === true)
-}
-
-function isConnectionAvailable(connection: { StatusType?: { ID?: number; Title?: string; IsOperational?: boolean } }): boolean | null {
-  const title = String(connection?.StatusType?.Title ?? '').toLowerCase()
-  const statusId = connection?.StatusType?.ID
-
-  if (statusId === 50 || title.includes('available') || title.includes('disponible') || title.includes('libre')) return true
-  if (statusId === 60 || title.includes('occupied') || title.includes('in use') || title.includes('ocupado')) return false
-  return null
-}
-
-async function fetchOcmStatus(ocmId: number, ocmApiKey: string): Promise<boolean> {
-  const params = new URLSearchParams({
-    output: 'json',
-    compact: 'false',
-    verbose: 'false',
-    chargepointid: String(ocmId),
-    key: ocmApiKey,
-  })
-
-  const response = await fetch(`https://api.openchargemap.io/v3/poi/?${params}`, {
-    headers: {
-      Accept: 'application/json',
-      'x-api-key': ocmApiKey,
-      'user-agent': 'estado-cargadores-aspe-edge/1.0',
-    },
-  })
-
-  if (!response.ok) throw new Error(`OCM HTTP ${response.status}`)
-
-  const points = (await response.json()) as OcmPoint[]
-  if (!points.length) throw new Error(`Sin resultados OCM para chargepointid=${ocmId}`)
-
-  return getAvailabilityFromConnections(points[0].Connections ?? [])
-}
-
-async function fetchOcmSnapshot(ocmId: number, ocmApiKey: string): Promise<{
-  isAvailable: boolean
-  snapshot: ConnectorSnapshot
-}> {
-  const params = new URLSearchParams({
-    output: 'json',
-    compact: 'false',
-    verbose: 'false',
-    chargepointid: String(ocmId),
-    key: ocmApiKey,
-  })
-
-  const response = await fetch(`https://api.openchargemap.io/v3/poi/?${params}`, {
-    headers: {
-      Accept: 'application/json',
-      'x-api-key': ocmApiKey,
-      'user-agent': 'estado-cargadores-aspe-edge/1.0',
-    },
-  })
-
-  if (!response.ok) throw new Error(`OCM HTTP ${response.status}`)
-
-  const points = (await response.json()) as OcmPoint[]
-  if (!points.length) throw new Error(`Sin resultados OCM para chargepointid=${ocmId}`)
-
-  const connections = points[0].Connections ?? []
-  const knownStatuses = connections.map(isConnectionAvailable).filter((v) => v !== null) as boolean[]
-  const availableCount = knownStatuses.filter(Boolean).length
-  const totalConnectors = connections.length > 0 ? connections.length : null
-
-  return {
-    isAvailable: getAvailabilityFromConnections(connections),
-    snapshot: {
-      available_connectors: knownStatuses.length ? availableCount : null,
-      total_connectors: totalConnectors,
-    },
-  }
-}
-
 // ─── Orquestador principal ────────────────────────────────────────────────────
 
 async function checkAspeStationsStatus(
   stations: Station[],
-  googleApiKey: string | undefined,
-  ocmApiKey: string,
+  googleApiKey: string,
 ): Promise<StationResult[]> {
   return Promise.all(
     stations.map(async (station): Promise<StationResult> => {
-      // Fuente 1: Google Places API (New) — datos en tiempo real
-      if (googleApiKey) {
-        try {
-          const { googleName, status, snapshot } = await fetchGooglePlacesStatus(station, googleApiKey)
-          if (status !== 'SIN_DATOS_DINAMICOS') {
-            return {
-              station_id: station.station_id,
-              location_name: station.location_name,
-              google_name: googleName,
-              status,
-              is_available: status === 'DISPONIBLE',
-              available_connectors: snapshot.available_connectors,
-              total_connectors: snapshot.total_connectors,
-              source: 'google-places',
-            }
-          }
-        } catch (_err) {
-          // Continúa con fallback
-        }
-      }
-
-      // Fuente 2: OpenChargeMap (fallback)
       try {
-        const { isAvailable, snapshot } = await fetchOcmSnapshot(station.ocm_id, ocmApiKey)
+        const { googleName, status, snapshot } = await fetchGooglePlacesStatus(station, googleApiKey)
         return {
           station_id: station.station_id,
           location_name: station.location_name,
-          google_name: null,
-          status: isAvailable ? 'DISPONIBLE' : 'OCUPADO',
-          is_available: isAvailable,
+          google_name: googleName,
+          status,
+          is_available: status === 'DISPONIBLE',
           available_connectors: snapshot.available_connectors,
           total_connectors: snapshot.total_connectors,
-          source: 'openchargemap',
+          source: 'google-places',
         }
-      } catch (_err) {
+      } catch (error) {
         return {
           station_id: station.station_id,
           location_name: station.location_name,
@@ -266,7 +145,7 @@ async function checkAspeStationsStatus(
           is_available: false,
           available_connectors: null,
           total_connectors: null,
-          source: 'sin-datos',
+          source: `google-places-error:${error instanceof Error ? error.message : 'unknown'}`,
         }
       }
     }),
@@ -278,7 +157,6 @@ async function checkAspeStationsStatus(
 Deno.serve(async (_req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-  const ocmApiKey = Deno.env.get('OCM_API_KEY')
   const googleApiKey = Deno.env.get('GOOGLE_PLACES_API_KEY')
 
   if (!supabaseUrl || !serviceRoleKey) {
@@ -288,9 +166,9 @@ Deno.serve(async (_req) => {
     )
   }
 
-  if (!ocmApiKey) {
+  if (!googleApiKey) {
     return new Response(
-      JSON.stringify({ ok: false, error: 'Falta OCM_API_KEY (requerido como fallback)' }),
+      JSON.stringify({ ok: false, error: 'Falta GOOGLE_PLACES_API_KEY' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } },
     )
   }
@@ -298,7 +176,7 @@ Deno.serve(async (_req) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey)
 
   try {
-    const results = await checkAspeStationsStatus(STATIONS, googleApiKey, ocmApiKey)
+    const results = await checkAspeStationsStatus(STATIONS, googleApiKey)
 
     const rowsToInsert = results.map(({ station_id, location_name, is_available, available_connectors, total_connectors }) => ({
       station_id,
