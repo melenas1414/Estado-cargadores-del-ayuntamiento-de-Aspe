@@ -221,6 +221,7 @@ useSeoMeta({
             :updated-at="c.created_at"
             :available-connectors="c.available_connectors"
             :total-connectors="c.total_connectors"
+            :connector-type="c.connector_type"
           />
         </div>
       </section>

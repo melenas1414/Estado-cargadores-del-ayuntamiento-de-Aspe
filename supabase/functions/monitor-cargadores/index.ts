@@ -5,6 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 type Station = {
   station_id: string
   location_name: string
+  google_place_id?: string
 }
 
 type EvAvailabilityStatus = 'DISPONIBLE' | 'OCUPADO' | 'SIN_DATOS_DINAMICOS'
@@ -17,6 +18,8 @@ type StationResult = {
   is_available: boolean
   available_connectors: number | null
   total_connectors: number | null
+  power_kw: number | null
+  connector_type: string | null
   source: string
 }
 
@@ -24,6 +27,8 @@ type ConnectorAggregation = {
   availableCount?: number
   count?: number
   type?: string
+  maxChargeRateKw?: number
+  outOfServiceCount?: number
 }
 
 type GooglePlace = {
@@ -41,16 +46,38 @@ type GooglePlacesResponse = {
 type ConnectorSnapshot = {
   available_connectors: number | null
   total_connectors: number | null
+  power_kw: number | null
+  connector_type: string | null
 }
 
 // ─── Estaciones ───────────────────────────────────────────────────────────────
 
 const STATIONS: Station[] = [
-  { station_id: 'ESIBE22E0001001', location_name: 'Av. Navarra 67, Aspe' },
-  { station_id: 'ESIBE22E0001002', location_name: 'Av. Constitución 42, Aspe' },
-  { station_id: 'ESIBE22E0001003', location_name: 'Av. Padre Ismael 34, Aspe' },
-  { station_id: 'ESIBE22E0001004', location_name: 'Av. Juan Carlos I 36, Aspe' },
-  { station_id: 'ESIBE22E0001005', location_name: 'Calle Orihuela 100, Aspe' },
+  {
+    station_id: 'ESIBE22E0001001',
+    location_name: 'Av. Navarra 67, Aspe',
+    google_place_id: 'ChIJfc4rIMrHYw0RkvWSsMGDHxc',
+  },
+  {
+    station_id: 'ESIBE22E0001002',
+    location_name: 'Av. Constitución 42, Aspe',
+    google_place_id: 'ChIJW5B0N8jHYw0RFVSeTep4lIY',
+  },
+  {
+    station_id: 'ESIBE22E0001003',
+    location_name: 'Av. Padre Ismael 34, Aspe',
+    google_place_id: 'ChIJN8ITYc7HYw0RkmZUbD0UJbc',
+  },
+  {
+    station_id: 'ESIBE22E0001004',
+    location_name: 'Av. Juan Carlos I 36, Aspe',
+    google_place_id: 'ChIJsykrHdvHYw0RsU1DWaSqEjE',
+  },
+  {
+    station_id: 'ESIBE22E0001005',
+    location_name: 'Calle Orihuela 100, Aspe',
+    google_place_id: 'ChIJEfcRm77HYw0RFwDVmJba3E8',
+  },
 ]
 
 // ─── Google Places API (New) ──────────────────────────────────────────────────
@@ -58,10 +85,19 @@ const STATIONS: Station[] = [
 function parseEvChargeStatus(
   connectorAggregation: ConnectorAggregation[] | undefined,
 ): { status: EvAvailabilityStatus; snapshot: ConnectorSnapshot } {
+  const CONNECTOR_TYPE_LABELS: Record<string, string> = {
+    EV_CONNECTOR_TYPE_TYPE_2: 'Tipo 2',
+    EV_CONNECTOR_TYPE_CCS_COMBO_2: 'CCS Combo 2',
+    EV_CONNECTOR_TYPE_CHADEMO: 'CHAdeMO',
+    EV_CONNECTOR_TYPE_J1772: 'J1772',
+    EV_CONNECTOR_TYPE_TESLA: 'Tesla',
+    EV_CONNECTOR_TYPE_UNSPECIFIED: 'No especificado',
+  }
+
   if (!connectorAggregation?.length) {
     return {
       status: 'SIN_DATOS_DINAMICOS',
-      snapshot: { available_connectors: null, total_connectors: null },
+      snapshot: { available_connectors: null, total_connectors: null, power_kw: null, connector_type: null },
     }
   }
 
@@ -72,10 +108,18 @@ function parseEvChargeStatus(
     if (c.availableCount !== undefined && c.availableCount !== null) return sum + c.availableCount
     return sum
   }, 0)
+  const maxKw = connectorAggregation.reduce((max, c) => {
+    if (c.maxChargeRateKw !== undefined && c.maxChargeRateKw !== null) return Math.max(max, c.maxChargeRateKw)
+    return max
+  }, 0)
+  const rawType = connectorAggregation[0]?.type ?? null
+  const connector_type = rawType ? (CONNECTOR_TYPE_LABELS[rawType] ?? rawType) : null
 
   const snapshot: ConnectorSnapshot = {
     available_connectors: hasData ? totalAvailable : null,
     total_connectors: totalConnectors > 0 ? totalConnectors : null,
+    power_kw: maxKw > 0 ? maxKw : null,
+    connector_type,
   }
 
   if (!hasData) return { status: 'SIN_DATOS_DINAMICOS', snapshot }
@@ -86,28 +130,55 @@ async function fetchGooglePlacesStatus(
   station: Station,
   apiKey: string,
 ): Promise<{ googleName: string | null; status: EvAvailabilityStatus; snapshot: ConnectorSnapshot }> {
-  const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Goog-Api-Key': apiKey,
-      'X-Goog-FieldMask': 'places.evChargeOptions,places.displayName,places.id',
-    },
-    body: JSON.stringify({
-      textQuery: `${station.location_name}, Aspe, Alicante, España`,
-      maxResultCount: 1,
-    }),
-  })
+  let place: GooglePlace | undefined
 
-  if (!response.ok) {
-    throw new Error(`Google Places HTTP ${response.status}`)
+  if (station.google_place_id) {
+    const detailsResponse = await fetch(
+      `https://places.googleapis.com/v1/places/${station.google_place_id}`,
+      {
+        method: 'GET',
+        headers: {
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'id,displayName,evChargeOptions',
+        },
+      },
+    )
+
+    if (detailsResponse.ok) {
+      place = (await detailsResponse.json()) as GooglePlace
+    }
   }
 
-  const data = (await response.json()) as GooglePlacesResponse
-  const place = data.places?.[0]
-
   if (!place) {
-    throw new Error(`Google Places: sin resultados para "${station.location_name}"`)
+    const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.evChargeOptions,places.displayName,places.id',
+      },
+      body: JSON.stringify({
+        textQuery: `punto de carga eléctrico ${station.location_name}, Aspe, Alicante, España`,
+        includedType: 'electric_vehicle_charging_station',
+        maxResultCount: 1,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Google Places HTTP ${response.status}`)
+    }
+
+    const data = (await response.json()) as GooglePlacesResponse
+    place = data.places?.[0]
+  }
+
+  // Si Google no devuelve el lugar (posiblemente todos ocupados), devolvemos OCUPADO
+  if (!place) {
+    return {
+      googleName: null,
+      status: 'OCUPADO',
+      snapshot: { available_connectors: 0, total_connectors: null, power_kw: null, connector_type: null },
+    }
   }
 
   const googleName = place.displayName?.text ?? null
@@ -134,6 +205,8 @@ async function checkAspeStationsStatus(
           is_available: status === 'DISPONIBLE',
           available_connectors: snapshot.available_connectors,
           total_connectors: snapshot.total_connectors,
+          power_kw: snapshot.power_kw,
+          connector_type: snapshot.connector_type,
           source: 'google-places',
         }
       } catch (error) {
@@ -145,6 +218,8 @@ async function checkAspeStationsStatus(
           is_available: false,
           available_connectors: null,
           total_connectors: null,
+          power_kw: null,
+          connector_type: null,
           source: `google-places-error:${error instanceof Error ? error.message : 'unknown'}`,
         }
       }
@@ -178,11 +253,11 @@ Deno.serve(async (_req) => {
   try {
     const results = await checkAspeStationsStatus(STATIONS, googleApiKey)
 
-    const rowsToInsert = results.map(({ station_id, location_name, is_available, available_connectors, total_connectors }) => ({
+    const rowsToInsert = results.map(({ station_id, location_name, is_available, available_connectors, total_connectors, power_kw }) => ({
       station_id,
       location_name,
       is_available,
-      power_kw: 22,
+      power_kw: power_kw ?? 22,
       available_connectors,
       total_connectors,
     }))
@@ -224,6 +299,8 @@ Deno.serve(async (_req) => {
       is_available: r.is_available,
       available_connectors: r.available_connectors,
       total_connectors: r.total_connectors,
+      power_kw: r.power_kw,
+      connector_type: r.connector_type,
       source: r.source,
     }))
 

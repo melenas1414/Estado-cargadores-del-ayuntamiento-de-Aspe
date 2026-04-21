@@ -9,6 +9,7 @@ interface Props {
   updatedAt:    string;
   availableConnectors?: number | null;
   totalConnectors?: number | null;
+  connectorType?: string | null;
 }
 
 const props = defineProps<Props>();
@@ -97,7 +98,7 @@ const conectoresTexto = computed(() => {
       <div class="flex items-center justify-between">
         <span class="flex items-center gap-1">
           <Zap class="h-3 w-3 text-blue-400" />
-          {{ powerKw }} kW
+          {{ powerKw }} kW{{ connectorType ? ` · ${connectorType}` : '' }}
         </span>
         <span class="flex items-center gap-1">
           <Clock class="h-3 w-3" />
