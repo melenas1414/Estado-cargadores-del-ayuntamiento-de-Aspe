@@ -18,6 +18,8 @@ type StationResult = {
   is_available: boolean
   available_connectors: number | null
   total_connectors: number | null
+  out_of_service_connectors: number | null
+  availability_updated_at: string | null
   power_kw: number | null
   connector_type: string | null
   connectors: ConnectorDetail[]
@@ -30,6 +32,7 @@ type ConnectorAggregation = {
   type?: string
   maxChargeRateKw?: number
   outOfServiceCount?: number
+  availabilityLastUpdateTime?: string
 }
 
 type GooglePlace = {
@@ -54,6 +57,8 @@ type ConnectorDetail = {
 type ConnectorSnapshot = {
   available_connectors: number | null
   total_connectors: number | null
+  out_of_service_connectors: number | null
+  availability_updated_at: string | null
   power_kw: number | null
   connector_type: string | null
   connectors: ConnectorDetail[]
@@ -106,67 +111,61 @@ function parseEvChargeStatus(
   if (!connectorAggregation?.length) {
     return {
       status: 'SIN_DATOS_DINAMICOS',
-      snapshot: { available_connectors: null, total_connectors: null, power_kw: null, connector_type: null, connectors: [] },
+      snapshot: {
+        available_connectors: null,
+        total_connectors: null,
+        out_of_service_connectors: null,
+        availability_updated_at: null,
+        power_kw: null,
+        connector_type: null,
+        connectors: [],
+      },
     }
   }
 
   const hasData = connectorAggregation.some((c) => c.availableCount !== undefined && c.availableCount !== null)
   const totalAvailable = connectorAggregation.reduce((sum, c) => sum + (c.availableCount ?? 0), 0)
+  const totalOutOfService = connectorAggregation.reduce((sum, c) => sum + (c.outOfServiceCount ?? 0), 0)
   const totalConnectors = connectorAggregation.reduce((sum, c) => {
     if (c.count !== undefined && c.count !== null) return sum + c.count
     if (c.availableCount !== undefined && c.availableCount !== null) return sum + c.availableCount
     return sum
   }, 0)
-  const maxKw = connectorAggregation.reduce((max, c) => {
-    if (c.maxChargeRateKw !== undefined && c.maxChargeRateKw !== null) return Math.max(max, c.maxChargeRateKw)
-    return max
-  }, 0)
   const rawType = connectorAggregation[0]?.type ?? null
   const connector_type = rawType ? (CONNECTOR_TYPE_LABELS[rawType] ?? rawType) : null
+  const availabilityUpdatedAt = connectorAggregation
+    .map((c) => c.availabilityLastUpdateTime)
+    .filter((value): value is string => Boolean(value))
+    .sort()
+    .at(-1) ?? null
 
   const connectors: ConnectorDetail[] = connectorAggregation.map((c) => ({
     type: c.type ? (CONNECTOR_TYPE_LABELS[c.type] ?? c.type) : 'Desconocido',
-    power_kw: c.maxChargeRateKw ?? null,
+    power_kw:
+      typeof c.maxChargeRateKw === 'number' && typeof c.count === 'number' && c.count > 0
+        ? Math.round((c.maxChargeRateKw / c.count) * 100) / 100
+        : c.maxChargeRateKw ?? null,
     total: c.count ?? 0,
     available: c.availableCount ?? 0,
   }))
 
+  const powerPerConnector = connectors.reduce((max, c) => {
+    if (typeof c.power_kw === 'number' && c.power_kw > 0) return Math.max(max, c.power_kw)
+    return max
+  }, 0)
+
   const snapshot: ConnectorSnapshot = {
     available_connectors: hasData ? totalAvailable : null,
     total_connectors: totalConnectors > 0 ? totalConnectors : null,
-    power_kw: maxKw > 0 ? maxKw : null,
+    out_of_service_connectors: totalOutOfService,
+    availability_updated_at: availabilityUpdatedAt,
+    power_kw: powerPerConnector > 0 ? powerPerConnector : null,
     connector_type,
     connectors,
   }
 
   if (!hasData) return { status: 'SIN_DATOS_DINAMICOS', snapshot }
   return { status: totalAvailable > 0 ? 'DISPONIBLE' : 'OCUPADO', snapshot }
-}
-
-function normalizeSnapshotForAspe(snapshot: ConnectorSnapshot): { status: EvAvailabilityStatus; snapshot: ConnectorSnapshot } {
-  const tipo2 = snapshot.connectors.find((c) => c.type === 'Tipo 2')
-  const availableRaw = tipo2?.available ?? snapshot.available_connectors ?? 0
-  const available = Math.max(0, Math.min(2, availableRaw))
-
-  const normalizedSnapshot: ConnectorSnapshot = {
-    available_connectors: available,
-    total_connectors: 2,
-    power_kw: 11,
-    connector_type: 'Tipo 2',
-    connectors: [
-      {
-        type: 'Tipo 2',
-        power_kw: 11,
-        total: 2,
-        available,
-      },
-    ],
-  }
-
-  return {
-    status: available > 0 ? 'DISPONIBLE' : 'OCUPADO',
-    snapshot: normalizedSnapshot,
-  }
 }
 
 async function fetchGooglePlacesStatus(
@@ -217,26 +216,27 @@ async function fetchGooglePlacesStatus(
 
   // Si Google no devuelve el lugar (posiblemente todos ocupados), devolvemos OCUPADO
   if (!place) {
-    const normalized = normalizeSnapshotForAspe({
+    const snapshot: ConnectorSnapshot = {
       available_connectors: 0,
       total_connectors: null,
+      out_of_service_connectors: 0,
+      availability_updated_at: null,
       power_kw: null,
       connector_type: null,
       connectors: [],
-    })
+    }
 
     return {
       googleName: null,
-      status: normalized.status,
-      snapshot: normalized.snapshot,
+      status: 'OCUPADO',
+      snapshot,
     }
   }
 
   const googleName = place.displayName?.text ?? null
   const parsed = parseEvChargeStatus(place.evChargeOptions?.connectorAggregation)
-  const normalized = normalizeSnapshotForAspe(parsed.snapshot)
 
-  return { googleName, status: normalized.status, snapshot: normalized.snapshot }
+  return { googleName, status: parsed.status, snapshot: parsed.snapshot }
 }
 
 // ─── Orquestador principal ────────────────────────────────────────────────────
@@ -257,6 +257,8 @@ async function checkAspeStationsStatus(
           is_available: status === 'DISPONIBLE',
           available_connectors: snapshot.available_connectors,
           total_connectors: snapshot.total_connectors,
+          out_of_service_connectors: snapshot.out_of_service_connectors,
+          availability_updated_at: snapshot.availability_updated_at,
           power_kw: snapshot.power_kw,
           connector_type: snapshot.connector_type,
           connectors: snapshot.connectors,
@@ -271,6 +273,8 @@ async function checkAspeStationsStatus(
           is_available: false,
           available_connectors: null,
           total_connectors: null,
+          out_of_service_connectors: null,
+          availability_updated_at: null,
           power_kw: null,
           connector_type: null,
           connectors: [],
@@ -307,20 +311,24 @@ Deno.serve(async (_req) => {
   try {
     const results = await checkAspeStationsStatus(STATIONS, googleApiKey)
 
-    const rowsToInsert = results.map(({ station_id, location_name, is_available, available_connectors, total_connectors, power_kw }) => ({
+    const rowsToInsert = results.map(({ station_id, location_name, is_available, available_connectors, total_connectors, out_of_service_connectors, availability_updated_at, power_kw }) => ({
       station_id,
       location_name,
       is_available,
       power_kw: power_kw ?? 22,
       available_connectors,
       total_connectors,
+      out_of_service_connectors,
+      availability_updated_at,
     }))
 
     const { error: insertError } = await supabase.from('charging_logs').insert(rowsToInsert)
     if (insertError) {
       const isOldSchema =
         insertError.message.includes('available_connectors') ||
-        insertError.message.includes('total_connectors')
+        insertError.message.includes('total_connectors') ||
+        insertError.message.includes('out_of_service_connectors') ||
+        insertError.message.includes('availability_updated_at')
 
       if (!isOldSchema) throw new Error(`Error al insertar en Supabase: ${insertError.message}`)
 
@@ -353,6 +361,8 @@ Deno.serve(async (_req) => {
       is_available: r.is_available,
       available_connectors: r.available_connectors,
       total_connectors: r.total_connectors,
+      out_of_service_connectors: r.out_of_service_connectors,
+      availability_updated_at: r.availability_updated_at,
       power_kw: r.power_kw,
       connector_type: r.connector_type,
       connectors: r.connectors,

@@ -23,7 +23,10 @@ export default defineEventHandler(async (event) => {
 
   // Usar el timestamp más reciente de los datos, no el tiempo de servidor
   const ultimaActualizacion = cargadores.length
-    ? cargadores.reduce((max: string, c: any) => (c.created_at > max ? c.created_at : max), cargadores[0].created_at)
+    ? cargadores.reduce((max: string, c: any) => {
+        const current = c.availability_updated_at ?? c.created_at;
+        return current > max ? current : max;
+      }, cargadores[0].availability_updated_at ?? cargadores[0].created_at)
     : new Date().toISOString();
 
   return {

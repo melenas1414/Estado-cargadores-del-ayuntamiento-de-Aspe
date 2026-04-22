@@ -28,6 +28,7 @@ const horaActualizacion = computed(() => {
   return new Date(props.updatedAt).toLocaleTimeString('es-ES', {
     hour:   '2-digit',
     minute: '2-digit',
+    timeZone: 'Europe/Madrid',
   });
 });
 
@@ -76,6 +77,11 @@ const resumenConectores = computed(() => {
 
   return 'Sin resumen de conectores';
 });
+
+const potenciaTexto = computed(() => {
+  if (!Number.isFinite(props.powerKw) || props.powerKw <= 0) return null;
+  return `${props.powerKw} kW por conector`;
+});
 </script>
 
 <template>
@@ -108,6 +114,7 @@ const resumenConectores = computed(() => {
         {{ locationName }}
       </h3>
       <p class="mt-0.5 text-xs text-slate-500">{{ stationId }}</p>
+      <p v-if="potenciaTexto" class="mt-1 text-[11px] text-slate-400">{{ potenciaTexto }}</p>
     </div>
 
     <!-- Detalles: conectores por tipo o resumen -->

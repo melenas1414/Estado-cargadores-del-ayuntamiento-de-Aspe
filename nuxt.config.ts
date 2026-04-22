@@ -30,6 +30,7 @@ export default defineNuxtConfig({
     // Disponibles en cliente y servidor (prefijo "public")
     public: {
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL ?? '',
+      siteUrl: process.env.NUXT_PUBLIC_SITE_URL ?? 'https://cargadores-aspe.onlineexpansions.com',
     },
   },
 

@@ -12,13 +12,17 @@ CREATE TABLE IF NOT EXISTS public.charging_logs (
   is_available BOOLEAN                               NOT NULL,
   power_kw     INT         DEFAULT 22                NOT NULL,
   available_connectors INT,
-  total_connectors     INT
+  total_connectors     INT,
+  out_of_service_connectors INT,
+  availability_updated_at TIMESTAMPTZ
 );
 
 -- Asegura columnas nuevas en instalaciones ya creadas
 ALTER TABLE public.charging_logs
   ADD COLUMN IF NOT EXISTS available_connectors INT,
-  ADD COLUMN IF NOT EXISTS total_connectors INT;
+  ADD COLUMN IF NOT EXISTS total_connectors INT,
+  ADD COLUMN IF NOT EXISTS out_of_service_connectors INT,
+  ADD COLUMN IF NOT EXISTS availability_updated_at TIMESTAMPTZ;
 
 -- ─── Índices para consultas frecuentes ───────────────────────
 CREATE INDEX IF NOT EXISTS idx_charging_logs_station_id
@@ -58,7 +62,9 @@ SELECT DISTINCT ON (station_id)
   is_available,
   power_kw,
   available_connectors,
-  total_connectors
+  total_connectors,
+  out_of_service_connectors,
+  availability_updated_at
 FROM public.charging_logs
 ORDER BY station_id, created_at DESC;
 
@@ -69,6 +75,8 @@ COMMENT ON COLUMN public.charging_logs.created_at   IS 'Fecha y hora en que se t
 COMMENT ON COLUMN public.charging_logs.station_id   IS 'ID de la estación de carga según la red Iberdrola';
 COMMENT ON COLUMN public.charging_logs.location_name IS 'Nombre descriptivo de la ubicación física';
 COMMENT ON COLUMN public.charging_logs.is_available  IS 'TRUE = libre para cargar, FALSE = ocupado';
-COMMENT ON COLUMN public.charging_logs.power_kw      IS 'Potencia del cargador en kW (siempre 22 para esta red)';
+COMMENT ON COLUMN public.charging_logs.power_kw      IS 'Potencia por conector en kW derivada desde Google Places';
 COMMENT ON COLUMN public.charging_logs.available_connectors IS 'Número de conectores disponibles en la muestra';
 COMMENT ON COLUMN public.charging_logs.total_connectors     IS 'Número total de conectores detectados en la estación';
+COMMENT ON COLUMN public.charging_logs.out_of_service_connectors IS 'Número de conectores fuera de servicio reportados por Google Places';
+COMMENT ON COLUMN public.charging_logs.availability_updated_at IS 'Fecha y hora del último dato dinámico reportado por Google Places';

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import 'leaflet/dist/leaflet.css'
 
 type ChargerMapPoint = {
   stationId: string
@@ -46,6 +47,11 @@ async function initMap() {
 
   layerGroup = L.layerGroup().addTo(mapInstance)
   renderPoints()
+
+  // Leaflet necesita invalidar tamaño cuando el contenedor se monta en cliente
+  setTimeout(() => {
+    if (mapInstance) mapInstance.invalidateSize()
+  }, 0)
 }
 
 async function renderPoints() {

@@ -101,9 +101,6 @@ const cargadores   = computed(() => cargadoresData.value?.cargadores ?? []);
 const ultimaActualizacion = computed(() => cargadoresData.value?.ultimaActualizacion ?? '');
 
 function libresPorCargador(c: any) {
-  const kw = Number(c.power_kw);
-  if (kw === 22) return 2;
-  if (kw === 11) return 1;
   if (typeof c.available_connectors === 'number') return Math.max(0, Math.min(2, c.available_connectors));
   return c.is_available ? 1 : 0;
 }
@@ -124,6 +121,7 @@ const horaLegible = computed(() => {
     hour:   '2-digit',
     minute: '2-digit',
     second: '2-digit',
+    timeZone: 'Europe/Madrid',
   });
 });
 
@@ -156,8 +154,11 @@ const disponibilidadPorPunto = computed(() => cargadores.value.map((c: any) => {
   };
 }));
 
+const runtimeConfig = useRuntimeConfig();
 const requestUrl = useRequestURL();
-const canonicalUrl = `${requestUrl.origin}${requestUrl.pathname}`;
+const siteUrl = (runtimeConfig.public.siteUrl || 'https://cargadores-aspe.onlineexpansions.com').replace(/\/+$/, '');
+const canonicalPath = requestUrl.pathname || '/';
+const canonicalUrl = `${siteUrl}${canonicalPath}`;
 
 // ─── SEO estructurado ────────────────────────────────────────────────────────
 // Datos de estaciones para JSON-LD (LocalBusiness por punto de carga)
@@ -459,9 +460,9 @@ useHead({
             :location-name="c.location_name"
             :is-available="c.is_available"
             :power-kw="c.power_kw"
-            :updated-at="c.created_at"
+            :updated-at="c.availability_updated_at || c.created_at"
             :available-connectors="libresPorCargador(c)"
-            :total-connectors="2"
+            :total-connectors="c.total_connectors || 2"
             :connector-type="c.connector_type"
             :connectors="c.connectors"
           />
