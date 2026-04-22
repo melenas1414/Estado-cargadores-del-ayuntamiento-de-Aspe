@@ -1,0 +1,248 @@
+import { serverSupabaseClient } from '#supabase/server';
+import { getQuery } from 'h3';
+
+const DIAS_POR_PERIODO: Record<string, number> = {
+  today: 1,
+  '7d': 7,
+  '30d': 30,
+};
+
+const DIAS_ES = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+
+type Row = {
+  station_id: string;
+  location_name: string;
+  created_at: string;
+  is_available: boolean;
+  available_connectors: number | null;
+  total_connectors: number | null;
+  out_of_service_connectors: number | null;
+  availability_updated_at: string | null;
+};
+
+function toMs(iso: string): number {
+  return new Date(iso).getTime();
+}
+
+function round(n: number): number {
+  return Math.round(n);
+}
+
+function inferSampleMinutes(sortedTimestamps: number[]): number {
+  if (sortedTimestamps.length < 2) return 15;
+  const deltas: number[] = [];
+  for (let i = 1; i < sortedTimestamps.length; i++) {
+    const d = (sortedTimestamps[i] - sortedTimestamps[i - 1]) / 60000;
+    if (Number.isFinite(d) && d > 0) deltas.push(d);
+  }
+  if (!deltas.length) return 15;
+  deltas.sort((a, b) => a - b);
+  return Math.max(1, round(deltas[Math.floor(deltas.length / 2)]));
+}
+
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event);
+  const periodo = String(query.periodo ?? '7d');
+  const dias = DIAS_POR_PERIODO[periodo] ?? 7;
+
+  const supabase = await serverSupabaseClient(event);
+  const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+
+  const { data, error } = await supabase
+    .from('charging_logs')
+    .select('station_id, location_name, created_at, is_available, available_connectors, total_connectors, out_of_service_connectors, availability_updated_at')
+    .gte('created_at', desde.toISOString())
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: `Error en diagnostico: ${error.message}`,
+    });
+  }
+
+  const rows = (data ?? []) as Row[];
+  if (!rows.length) {
+    return {
+      saturacion: {
+        porcentaje: 0,
+        minutosSinConectoresLibres: 0,
+        muestraMinutos: 15,
+        sugerencia: 'Sin datos suficientes',
+        conectoresExtraRecomendados: 0,
+        puntosExtraRecomendados: 0,
+      },
+      averias: [],
+      insights: [],
+    };
+  }
+
+  const snapshots: Record<string, { free: number; total: number }> = {};
+  for (const r of rows) {
+    if (!snapshots[r.created_at]) snapshots[r.created_at] = { free: 0, total: 0 };
+    const free = typeof r.available_connectors === 'number' ? Math.max(0, r.available_connectors) : (r.is_available ? 1 : 0);
+    const total = typeof r.total_connectors === 'number' && r.total_connectors > 0 ? r.total_connectors : 2;
+    snapshots[r.created_at].free += free;
+    snapshots[r.created_at].total += total;
+  }
+
+  const snapshotKeys = Object.keys(snapshots).sort();
+  const snapshotTimes = snapshotKeys.map((k) => toMs(k));
+  const sampleMinutes = inferSampleMinutes(snapshotTimes);
+
+  const totalSnapshots = snapshotKeys.length;
+  const saturatedSnapshots = snapshotKeys.filter((k) => snapshots[k].free <= 0).length;
+  const saturationPct = totalSnapshots > 0 ? round((saturatedSnapshots / totalSnapshots) * 100) : 0;
+  const saturatedMinutes = saturatedSnapshots * sampleMinutes;
+
+  const conectoresExtraRecomendados = saturationPct >= 15 ? Math.max(1, Math.ceil((saturationPct - 15) / 10) + 1) : 0;
+  const puntosExtraRecomendados = Math.ceil(conectoresExtraRecomendados / 2);
+
+  const saturacion = {
+    porcentaje: saturationPct,
+    minutosSinConectoresLibres: saturatedMinutes,
+    muestraMinutos: sampleMinutes,
+    sugerencia:
+      saturationPct >= 25
+        ? 'Alta saturacion. Recomendable ampliar infraestructura.'
+        : saturationPct >= 15
+          ? 'Saturacion moderada. Vigilar demanda y planificar ampliacion.'
+          : 'Saturacion baja. Red estable.',
+    conectoresExtraRecomendados,
+    puntosExtraRecomendados,
+  };
+
+  const byStation: Record<string, Row[]> = {};
+  for (const r of rows) {
+    if (!byStation[r.station_id]) byStation[r.station_id] = [];
+    byStation[r.station_id].push(r);
+  }
+
+  const now = Date.now();
+  const averias = Object.entries(byStation).map(([stationId, stationRows]) => {
+    stationRows.sort((a, b) => toMs(a.created_at) - toMs(b.created_at));
+    const locationName = stationRows[0]?.location_name ?? stationId;
+
+    const outRows = stationRows.filter((r) => (r.out_of_service_connectors ?? 0) > 0).length;
+    const outRatio = stationRows.length ? (outRows / stationRows.length) * 100 : 0;
+
+    let maxOutStreak = 0;
+    let currentStreak = 0;
+    for (const r of stationRows) {
+      if ((r.out_of_service_connectors ?? 0) > 0) {
+        currentStreak++;
+        maxOutStreak = Math.max(maxOutStreak, currentStreak);
+      } else {
+        currentStreak = 0;
+      }
+    }
+    const outStreakHours = round((maxOutStreak * sampleMinutes) / 60);
+
+    const latestAvailabilityUpdate = stationRows
+      .map((r) => r.availability_updated_at)
+      .filter((x): x is string => Boolean(x))
+      .sort()
+      .at(-1) ?? null;
+
+    const staleHours = latestAvailabilityUpdate
+      ? (now - new Date(latestAvailabilityUpdate).getTime()) / (1000 * 60 * 60)
+      : Infinity;
+
+    const last48h = stationRows.filter((r) => now - toMs(r.created_at) <= 48 * 60 * 60 * 1000);
+    const availSeries = last48h
+      .map((r) => (typeof r.available_connectors === 'number' ? r.available_connectors : (r.is_available ? 1 : 0)))
+      .filter((n) => Number.isFinite(n));
+    const uniq = new Set(availSeries);
+    const flatline = availSeries.length >= 8 && uniq.size === 1;
+
+    const reasons: string[] = [];
+    if (outRatio >= 30) reasons.push(`Fuera de servicio frecuente (${round(outRatio)}%)`);
+    if (outStreakHours >= 24) reasons.push(`Fuera de servicio prolongado (${outStreakHours}h)`);
+    if (staleHours >= 6) reasons.push(`Dato dinamico desactualizado (${round(staleHours)}h)`);
+    if (flatline) reasons.push('Patron plano de disponibilidad en 48h');
+
+    const level =
+      reasons.length >= 2 || outStreakHours >= 24
+        ? 'critical'
+        : reasons.length === 1
+          ? 'warning'
+          : 'ok';
+
+    return {
+      station_id: stationId,
+      location_name: locationName,
+      nivel: level,
+      razones: reasons,
+      ratioFueraServicio: round(outRatio),
+      rachaFueraServicioHoras: outStreakHours,
+      horasSinActualizarDinamico: Number.isFinite(staleHours) ? round(staleHours) : null,
+    };
+  });
+
+  const hh: Record<string, { occ: number; total: number }> = {};
+  const stationOcc: Record<string, { name: string; occ: number; total: number }> = {};
+
+  for (const r of rows) {
+    const date = new Date(r.created_at);
+    const key = `${date.getDay()}-${date.getHours()}`;
+    const free = typeof r.available_connectors === 'number' ? r.available_connectors : (r.is_available ? 1 : 0);
+    const total = typeof r.total_connectors === 'number' && r.total_connectors > 0 ? r.total_connectors : 2;
+    const occRatio = total > 0 ? 1 - Math.min(Math.max(free, 0), total) / total : 0;
+
+    if (!hh[key]) hh[key] = { occ: 0, total: 0 };
+    hh[key].occ += occRatio;
+    hh[key].total++;
+
+    if (!stationOcc[r.station_id]) {
+      stationOcc[r.station_id] = { name: r.location_name, occ: 0, total: 0 };
+    }
+    stationOcc[r.station_id].occ += occRatio;
+    stationOcc[r.station_id].total++;
+  }
+
+  let worstKey = '0-0';
+  let worstVal = -1;
+  for (const [k, v] of Object.entries(hh)) {
+    const avg = v.total ? v.occ / v.total : 0;
+    if (avg > worstVal) {
+      worstVal = avg;
+      worstKey = k;
+    }
+  }
+
+  let bestKey = '0-0';
+  let bestVal = 2;
+  for (const [k, v] of Object.entries(hh)) {
+    const avg = v.total ? v.occ / v.total : 0;
+    if (avg < bestVal) {
+      bestVal = avg;
+      bestKey = k;
+    }
+  }
+
+  const [worstDay, worstHour] = worstKey.split('-').map(Number);
+  const [bestDay, bestHour] = bestKey.split('-').map(Number);
+
+  let stressedStation = { station_id: '', location_name: '', ocupacion: 0 };
+  for (const [id, v] of Object.entries(stationOcc)) {
+    const avg = v.total ? v.occ / v.total : 0;
+    if (avg > stressedStation.ocupacion) {
+      stressedStation = { station_id: id, location_name: v.name, ocupacion: avg };
+    }
+  }
+
+  const insights = [
+    `Franja critica: ${DIAS_ES[worstDay]} ${String(worstHour).padStart(2, '0')}:00 con ${round(worstVal * 100)}% de ocupacion media.`,
+    `Franja favorable: ${DIAS_ES[bestDay]} ${String(bestHour).padStart(2, '0')}:00 con ${round((1 - bestVal) * 100)}% de disponibilidad media.`,
+    `Estacion con mayor estres: ${stressedStation.location_name} (${round(stressedStation.ocupacion * 100)}% ocupacion media).`,
+    saturationPct >= 15
+      ? `Demanda insatisfecha detectada: red saturada ${saturationPct}% del tiempo.`
+      : `Red estable: saturacion municipal en ${saturationPct}%.`,
+  ];
+
+  return {
+    saturacion,
+    averias,
+    insights,
+  };
+});

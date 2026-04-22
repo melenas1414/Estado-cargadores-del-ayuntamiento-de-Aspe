@@ -25,10 +25,13 @@ const validPoints = computed(() =>
   props.points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon)),
 )
 
-function markerColor(libres: number) {
-  if (libres <= 0) return '#f43f5e'
-  if (libres === 1) return '#f59e0b'
-  return '#10b981'
+function markerColor(libres: number, total: number) {
+  const totalSafe = total > 0 ? total : 1
+  const ratio = libres / totalSafe
+
+  if (ratio <= 0) return '#fb7185' // rose-400
+  if (ratio >= 1) return '#34d399' // emerald-400
+  return '#fbbf24' // amber-400
 }
 
 async function initMap() {
@@ -61,10 +64,11 @@ async function renderPoints() {
   layerGroup.clearLayers()
 
   for (const p of validPoints.value) {
+    const color = markerColor(p.libres, p.total)
     const marker = L.circleMarker([p.lat, p.lon], {
       radius: 9,
-      color: markerColor(p.libres),
-      fillColor: markerColor(p.libres),
+      color,
+      fillColor: color,
       fillOpacity: 0.85,
       weight: 2,
     })

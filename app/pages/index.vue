@@ -74,6 +74,27 @@ const {
   lazy: true,
 });
 
+const etaMinutes = ref(30);
+
+const {
+  data:    diagnosticoData,
+  pending: diagnosticoPending,
+  refresh: refrescarDiagnostico,
+} = useFetch('/api/analytics/diagnostic', {
+  query: computed(() => ({ periodo: periodo.value })),
+  watch: [periodo],
+  lazy: true,
+});
+
+const {
+  data:    etaData,
+  pending: etaPending,
+} = useFetch('/api/analytics/eta', {
+  query: computed(() => ({ minutes: etaMinutes.value })),
+  watch: [etaMinutes],
+  lazy: true,
+});
+
 // ─── Refresco manual ─────────────────────────────────────────────────────────
 const refrescando = ref(false);
 
@@ -83,6 +104,7 @@ async function refrescarTodo() {
     refrescarCargadores(),
     refrescarHeatmap(),
     refrescarMetricas(),
+    refrescarDiagnostico(),
   ]);
   refrescando.value = false;
 }
@@ -159,6 +181,30 @@ const disponibilidadPorPunto = computed(() => cargadores.value.map((c: any) => {
       `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.location_name)}`,
   };
 }));
+
+function classesEstadoPunto(libres: number, total: number) {
+  const totalSafe = total > 0 ? total : 1;
+  const ratio = libres / totalSafe;
+
+  if (ratio <= 0) {
+    return {
+      card: 'border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-400/60 hover:text-rose-200',
+      detail: 'text-rose-300',
+    };
+  }
+
+  if (ratio >= 1) {
+    return {
+      card: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400/60 hover:text-emerald-200',
+      detail: 'text-emerald-300',
+    };
+  }
+
+  return {
+    card: 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:border-amber-400/60 hover:text-amber-200',
+    detail: 'text-amber-300',
+  };
+}
 
 const runtimeConfig = useRuntimeConfig();
 const requestUrl = useRequestURL();
@@ -501,9 +547,10 @@ useHead({
               :href="p.googleUrl"
               target="_blank"
               rel="noopener noreferrer"
-              class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300 transition-colors hover:border-slate-700 hover:text-white"
+              class="rounded-lg border px-3 py-2 text-xs transition-colors"
+              :class="classesEstadoPunto(p.libres, p.total).card"
             >
-              <span class="block font-medium">{{ p.stationId }} · {{ p.libres }}/{{ p.total }}</span>
+              <span class="block font-medium" :class="classesEstadoPunto(p.libres, p.total).detail">{{ p.stationId }} · {{ p.libres }}/{{ p.total }}</span>
               <span class="block truncate text-slate-500">{{ p.locationName }}</span>
             </a>
           </div>
@@ -577,6 +624,18 @@ useHead({
           :minutos-ocupados-medio="metricasData.minutosOcupadosMedio"
           :cargador-mas-usado="metricasData.cargadorMasUsado"
           :por-estacion="metricasData.porEstacion ?? []"
+        />
+
+        <div v-if="diagnosticoPending || etaPending" class="mt-4 h-56 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+        <AiDiagnostics
+          v-else-if="diagnosticoData"
+          class="mt-4"
+          :saturacion="diagnosticoData.saturacion"
+          :averias="diagnosticoData.averias ?? []"
+          :insights="diagnosticoData.insights ?? []"
+          :eta-minutes="etaMinutes"
+          :eta-data="etaData ?? null"
+          @update:eta-minutes="etaMinutes = $event"
         />
       </section>
 

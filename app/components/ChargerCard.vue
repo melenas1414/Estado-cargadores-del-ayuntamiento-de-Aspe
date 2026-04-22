@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { Zap, CheckCircle, XCircle, Clock } from 'lucide-vue-next';
 
 interface ConnectorDetail {
@@ -32,27 +33,53 @@ const horaActualizacion = computed(() => {
   });
 });
 
+const totalConectores = computed(() => {
+  if (typeof props.totalConnectors === 'number' && props.totalConnectors > 0) return props.totalConnectors;
+  return null;
+});
+
+const conectoresLibres = computed(() => {
+  if (typeof props.availableConnectors === 'number') return Math.max(0, props.availableConnectors);
+  return null;
+});
+
+const tonoEstado = computed<'libre' | 'parcial' | 'ocupado'>(() => {
+  if (totalConectores.value !== null && conectoresLibres.value !== null) {
+    if (conectoresLibres.value <= 0) return 'ocupado';
+    if (conectoresLibres.value >= totalConectores.value) return 'libre';
+    return 'parcial';
+  }
+
+  return props.isAvailable ? 'libre' : 'ocupado';
+});
+
 // Clases dinámicas según disponibilidad
 const cardClasses = computed(() => [
   'relative flex flex-col gap-3 rounded-2xl border p-5 transition-all duration-500',
   'bg-slate-900/70 backdrop-blur-sm',
-  props.isAvailable
+  tonoEstado.value === 'libre'
     ? 'border-emerald-500/40 shadow-glow-green'
-    : 'border-rose-500/40 shadow-glow-red',
+    : tonoEstado.value === 'parcial'
+      ? 'border-amber-500/40 shadow-[0_0_24px_rgba(251,191,36,0.12)]'
+      : 'border-rose-500/40 shadow-glow-red',
 ]);
 
 const statusDotClasses = computed(() => [
   'w-3 h-3 rounded-full',
-  props.isAvailable
+  tonoEstado.value === 'libre'
     ? 'bg-emerald-400 animate-pulse-slow'
-    : 'bg-rose-400 animate-pulse-slow',
+    : tonoEstado.value === 'parcial'
+      ? 'bg-amber-400 animate-pulse-slow'
+      : 'bg-rose-400 animate-pulse-slow',
 ]);
 
 const badgeClasses = computed(() => [
   'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide',
-  props.isAvailable
+  tonoEstado.value === 'libre'
     ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/30'
-    : 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/30',
+    : tonoEstado.value === 'parcial'
+      ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30'
+      : 'bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/30',
 ]);
 
 const conectoresTexto = computed(() => {
@@ -90,20 +117,33 @@ const potenciaTexto = computed(() => {
     <div class="absolute right-4 top-4 flex items-center gap-2">
       <span :class="statusDotClasses" />
       <span :class="badgeClasses">
-        <CheckCircle v-if="isAvailable" class="h-3 w-3" />
+        <CheckCircle v-if="tonoEstado === 'libre'" class="h-3 w-3" />
+        <Clock v-else-if="tonoEstado === 'parcial'" class="h-3 w-3" />
         <XCircle v-else class="h-3 w-3" />
-        {{ isAvailable ? 'Libre' : 'Ocupado' }}
+        {{ tonoEstado === 'libre' ? 'Libre' : tonoEstado === 'parcial' ? 'Parcial' : 'Ocupado' }}
       </span>
     </div>
 
     <!-- Icono de rayo -->
     <div
       class="flex h-10 w-10 items-center justify-center rounded-xl"
-      :class="isAvailable ? 'bg-emerald-500/15' : 'bg-rose-500/15'"
+      :class="
+        tonoEstado === 'libre'
+          ? 'bg-emerald-500/15'
+          : tonoEstado === 'parcial'
+            ? 'bg-amber-500/15'
+            : 'bg-rose-500/15'
+      "
     >
       <Zap
         class="h-5 w-5"
-        :class="isAvailable ? 'text-emerald-400' : 'text-rose-400'"
+        :class="
+          tonoEstado === 'libre'
+            ? 'text-emerald-400'
+            : tonoEstado === 'parcial'
+              ? 'text-amber-400'
+              : 'text-rose-400'
+        "
         fill="currentColor"
       />
     </div>
@@ -136,7 +176,13 @@ const potenciaTexto = computed(() => {
           </span>
           <span
             class="font-medium"
-            :class="c.available > 0 ? 'text-emerald-400' : 'text-rose-400'"
+            :class="
+              c.available <= 0
+                ? 'text-rose-400'
+                : c.available >= c.total
+                  ? 'text-emerald-400'
+                  : 'text-amber-400'
+            "
           >
             {{ c.available }}/{{ c.total }} libres
           </span>
