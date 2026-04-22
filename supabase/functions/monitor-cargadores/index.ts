@@ -168,6 +168,44 @@ function parseEvChargeStatus(
   return { status: totalAvailable > 0 ? 'DISPONIBLE' : 'OCUPADO', snapshot }
 }
 
+function normalizeAspeStationSnapshot(
+  stationId: string,
+  snapshot: ConnectorSnapshot,
+): { status: EvAvailabilityStatus; snapshot: ConnectorSnapshot } {
+  if (stationId !== 'ESIBE22E0001001') {
+    const available = snapshot.available_connectors ?? 0
+    if (snapshot.available_connectors === null) return { status: 'SIN_DATOS_DINAMICOS', snapshot }
+    return { status: available > 0 ? 'DISPONIBLE' : 'OCUPADO', snapshot }
+  }
+
+  const tipo2 = snapshot.connectors.find((c) => c.type === 'Tipo 2')
+  const rawTotal = tipo2?.total ?? snapshot.total_connectors ?? 0
+  const rawAvailable = tipo2?.available ?? snapshot.available_connectors ?? 0
+
+  const adjustedAvailable = rawTotal >= 4 ? rawAvailable - 2 : rawAvailable
+  const available = Math.max(0, Math.min(2, adjustedAvailable))
+  const total = 2
+
+  const normalizedSnapshot: ConnectorSnapshot = {
+    available_connectors: available,
+    total_connectors: total,
+    out_of_service_connectors: snapshot.out_of_service_connectors,
+    availability_updated_at: snapshot.availability_updated_at,
+    power_kw: 11,
+    connector_type: 'Tipo 2',
+    connectors: [
+      {
+        type: 'Tipo 2',
+        power_kw: 11,
+        total,
+        available,
+      },
+    ],
+  }
+
+  return { status: available > 0 ? 'DISPONIBLE' : 'OCUPADO', snapshot: normalizedSnapshot }
+}
+
 async function fetchGooglePlacesStatus(
   station: Station,
   apiKey: string,
@@ -235,8 +273,9 @@ async function fetchGooglePlacesStatus(
 
   const googleName = place.displayName?.text ?? null
   const parsed = parseEvChargeStatus(place.evChargeOptions?.connectorAggregation)
+  const normalized = normalizeAspeStationSnapshot(station.station_id, parsed.snapshot)
 
-  return { googleName, status: parsed.status, snapshot: parsed.snapshot }
+  return { googleName, status: normalized.status, snapshot: normalized.snapshot }
 }
 
 // ─── Orquestador principal ────────────────────────────────────────────────────

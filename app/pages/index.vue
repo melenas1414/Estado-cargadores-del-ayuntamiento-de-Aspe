@@ -16,11 +16,15 @@ type Periodo = 'today' | '7d' | '30d';
 type HorizontePrediccion = 0 | 1 | 2 | 3 | 7 | 14;
 
 const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
-  ESIBE22E0001001: { lat: 38.3510111, lon: -0.7710766 },
+  ESIBE22E0001001: { lat: 38.341118679046346, lon: -0.7654778230267333 },
   ESIBE22E0001002: { lat: 38.3476704, lon: -0.7691027 },
   ESIBE22E0001003: { lat: 38.3498799, lon: -0.7649660 },
   ESIBE22E0001004: { lat: 38.3430059, lon: -0.7610202 },
   ESIBE22E0001005: { lat: 38.3385331, lon: -0.7766776 },
+};
+
+const STATION_MAP_LINKS: Record<string, string> = {
+  ESIBE22E0001005: 'https://maps.app.goo.gl/9q9Jibv3bMDw16xG7',
 };
 
 // ─── Estado de período seleccionado ─────────────────────────────────────────
@@ -150,7 +154,9 @@ const disponibilidadPorPunto = computed(() => cargadores.value.map((c: any) => {
     total,
     lat: STATION_COORDS[c.station_id]?.lat,
     lon: STATION_COORDS[c.station_id]?.lon,
-    googleUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.location_name)}`,
+    googleUrl:
+      STATION_MAP_LINKS[c.station_id] ||
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.location_name)}`,
   };
 }));
 
@@ -163,7 +169,7 @@ const canonicalUrl = `${siteUrl}${canonicalPath}`;
 // ─── SEO estructurado ────────────────────────────────────────────────────────
 // Datos de estaciones para JSON-LD (LocalBusiness por punto de carga)
 const SEO_STATIONS = [
-  { id: 'ESIBE22E0001001', name: 'Cargador Eléctrico Aspe · Av. Carlos Soria',  street: 'Avenida Carlos Soria, 11',  lat: 38.3510111, lon: -0.7710766 },
+  { id: 'ESIBE22E0001001', name: 'Cargador Eléctrico Aspe · Av. Carlos Soria',  street: 'Avenida Carlos Soria, 11',  lat: 38.341118679046346, lon: -0.7654778230267333 },
   { id: 'ESIBE22E0001002', name: 'Cargador Eléctrico Aspe · Av. Constitución',  street: 'Avenida Constitución, 42', lat: 38.3476704, lon: -0.7691027 },
   { id: 'ESIBE22E0001003', name: 'Cargador Eléctrico Aspe · Av. Padre Ismael',  street: 'Avenida Padre Ismael, 34', lat: 38.3498799, lon: -0.7649660 },
   { id: 'ESIBE22E0001004', name: 'Cargador Eléctrico Aspe · Av. Juan Carlos I', street: 'Avenida Juan Carlos I, 36', lat: 38.3430059, lon: -0.7610202 },
