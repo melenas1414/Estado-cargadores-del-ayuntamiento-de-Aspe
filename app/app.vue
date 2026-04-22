@@ -9,7 +9,7 @@
 html,
 body {
   @apply bg-slate-950 text-slate-100 antialiased;
-  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Scrollbar personalizada para modo oscuro */
