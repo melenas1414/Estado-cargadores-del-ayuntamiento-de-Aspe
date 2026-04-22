@@ -70,7 +70,7 @@ const STATIONS: Station[] = [
   {
     station_id: 'ESIBE22E0001001',
     location_name: 'Av. Carlos Soria, 11, Aspe',
-    google_place_id: 'ChIJfc4rIMrHYw0RkvWSsMGDHxc',
+    google_place_id: 'ChIJ-U-KcMTHYw0RwyBsIKokiyQ',
   },
   {
     station_id: 'ESIBE22E0001002',
@@ -178,15 +178,15 @@ function normalizeAspeStationSnapshot(
     return { status: available > 0 ? 'DISPONIBLE' : 'OCUPADO', snapshot }
   }
 
-  // Para ESIBE22E0001001: usa el TOTAL GENERAL, no solo Tipo 2
-  const rawTotal = snapshot.total_connectors ?? 0
-  const rawAvailable = snapshot.available_connectors ?? 0
+  // Para ESIBE22E0001001: tomar SOLO conectores Tipo 2 de Google
+  const tipo2Connector = snapshot.connectors.find((c) => c.type === 'Tipo 2')
+  
+  if (!tipo2Connector) {
+    return { status: 'SIN_DATOS_DINAMICOS', snapshot }
+  }
 
-  // Si Google reporta 4 o más totales, significa que hay 2 phantom (probablemente 50kW)
-  // Restamos 2 tanto del total como de los disponibles
-  const total = rawTotal >= 4 ? 2 : rawTotal
-  const adjustedAvailable = rawTotal >= 4 ? rawAvailable - 2 : rawAvailable
-  const available = Math.max(0, Math.min(total, adjustedAvailable))
+  const total = tipo2Connector.total
+  const available = Math.max(0, tipo2Connector.available)
 
   const normalizedSnapshot: ConnectorSnapshot = {
     available_connectors: available,
