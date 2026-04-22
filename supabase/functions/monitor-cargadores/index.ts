@@ -178,13 +178,15 @@ function normalizeAspeStationSnapshot(
     return { status: available > 0 ? 'DISPONIBLE' : 'OCUPADO', snapshot }
   }
 
-  const tipo2 = snapshot.connectors.find((c) => c.type === 'Tipo 2')
-  const rawTotal = tipo2?.total ?? snapshot.total_connectors ?? 0
-  const rawAvailable = tipo2?.available ?? snapshot.available_connectors ?? 0
+  // Para ESIBE22E0001001: usa el TOTAL GENERAL, no solo Tipo 2
+  const rawTotal = snapshot.total_connectors ?? 0
+  const rawAvailable = snapshot.available_connectors ?? 0
 
+  // Si Google reporta 4 o más totales, significa que hay 2 phantom (probablemente 50kW)
+  // Restamos 2 tanto del total como de los disponibles
+  const total = rawTotal >= 4 ? 2 : rawTotal
   const adjustedAvailable = rawTotal >= 4 ? rawAvailable - 2 : rawAvailable
-  const available = Math.max(0, Math.min(2, adjustedAvailable))
-  const total = 2
+  const available = Math.max(0, Math.min(total, adjustedAvailable))
 
   const normalizedSnapshot: ConnectorSnapshot = {
     available_connectors: available,
