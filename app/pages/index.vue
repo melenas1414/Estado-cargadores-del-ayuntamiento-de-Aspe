@@ -16,11 +16,11 @@ type Periodo = 'today' | '7d' | '30d';
 type HorizontePrediccion = 0 | 1 | 2 | 3 | 7 | 14;
 
 const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
-  ESIBE22E0001001: { lat: 38.3478, lon: -0.7620 },
-  ESIBE22E0001002: { lat: 38.3490, lon: -0.7638 },
-  ESIBE22E0001003: { lat: 38.3510, lon: -0.7615 },
-  ESIBE22E0001004: { lat: 38.3445, lon: -0.7660 },
-  ESIBE22E0001005: { lat: 38.3525, lon: -0.7580 },
+  ESIBE22E0001001: { lat: 38.3510111, lon: -0.7710766 },
+  ESIBE22E0001002: { lat: 38.3476704, lon: -0.7691027 },
+  ESIBE22E0001003: { lat: 38.3498799, lon: -0.7649660 },
+  ESIBE22E0001004: { lat: 38.3430059, lon: -0.7610202 },
+  ESIBE22E0001005: { lat: 38.3385331, lon: -0.7766776 },
 };
 
 // ─── Estado de período seleccionado ─────────────────────────────────────────
@@ -163,11 +163,11 @@ const canonicalUrl = `${siteUrl}${canonicalPath}`;
 // ─── SEO estructurado ────────────────────────────────────────────────────────
 // Datos de estaciones para JSON-LD (LocalBusiness por punto de carga)
 const SEO_STATIONS = [
-  { id: 'ESIBE22E0001001', name: 'Cargador Eléctrico Aspe · Av. Carlos Soria',  street: 'Avenida Carlos Soria, 11',  lat: 38.3478, lon: -0.7620 },
-  { id: 'ESIBE22E0001002', name: 'Cargador Eléctrico Aspe · Av. Constitución',  street: 'Avenida Constitución, 42', lat: 38.3490, lon: -0.7638 },
-  { id: 'ESIBE22E0001003', name: 'Cargador Eléctrico Aspe · Av. Padre Ismael',  street: 'Avenida Padre Ismael, 34', lat: 38.3510, lon: -0.7615 },
-  { id: 'ESIBE22E0001004', name: 'Cargador Eléctrico Aspe · Av. Juan Carlos I', street: 'Avenida Juan Carlos I, 36', lat: 38.3445, lon: -0.7660 },
-  { id: 'ESIBE22E0001005', name: 'Cargador Eléctrico Aspe · Calle Orihuela',    street: 'Calle Orihuela, 100',      lat: 38.3525, lon: -0.7580 },
+  { id: 'ESIBE22E0001001', name: 'Cargador Eléctrico Aspe · Av. Carlos Soria',  street: 'Avenida Carlos Soria, 11',  lat: 38.3510111, lon: -0.7710766 },
+  { id: 'ESIBE22E0001002', name: 'Cargador Eléctrico Aspe · Av. Constitución',  street: 'Avenida Constitución, 42', lat: 38.3476704, lon: -0.7691027 },
+  { id: 'ESIBE22E0001003', name: 'Cargador Eléctrico Aspe · Av. Padre Ismael',  street: 'Avenida Padre Ismael, 34', lat: 38.3498799, lon: -0.7649660 },
+  { id: 'ESIBE22E0001004', name: 'Cargador Eléctrico Aspe · Av. Juan Carlos I', street: 'Avenida Juan Carlos I, 36', lat: 38.3430059, lon: -0.7610202 },
+  { id: 'ESIBE22E0001005', name: 'Cargador Eléctrico Aspe · Calle Orihuela',    street: 'Calle Orihuela, 100',      lat: 38.3385331, lon: -0.7766776 },
 ];
 
 useSeoMeta({
