@@ -237,6 +237,11 @@ onBeforeUnmount(() => {
 
 // ─── Datos derivados ─────────────────────────────────────────────────────────
 const cargadores   = computed(() => cargadoresData.value?.cargadores ?? []);
+const cargadoresFiltrados = computed(() =>
+  cargadorSeleccionado.value === 'all'
+    ? cargadores.value
+    : cargadores.value.filter((c: any) => c.station_id === cargadorSeleccionado.value)
+);
 const ultimaActualizacion = computed(() => cargadoresData.value?.ultimaActualizacion ?? '');
 const opcionesCargador = computed<OpcionCargador[]>(() => {
   const unicos = new Set<string>();
@@ -314,7 +319,7 @@ const estadoGlobal = computed(() => {
   return { texto: `${conectoresLibres.value}/${conectoresTotales.value} conectores libres`, clase: 'text-amber-400' };
 });
 
-const disponibilidadPorPunto = computed(() => cargadores.value.map((c: any) => {
+const disponibilidadPorPunto = computed(() => cargadoresFiltrados.value.map((c: any) => {
   const total = typeof c.total_connectors === 'number' && c.total_connectors > 0 ? c.total_connectors : 2;
   const libres = libresPorCargador(c);
   const ocupados = Math.max(0, total - libres);
@@ -744,7 +749,7 @@ useHead({
                 class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
               >
                 <ChargerCard
-                  v-for="c in cargadores"
+                  v-for="c in cargadoresFiltrados"
                   :key="c.station_id"
                   :station-id="c.station_id"
                   :location-name="c.location_name"
