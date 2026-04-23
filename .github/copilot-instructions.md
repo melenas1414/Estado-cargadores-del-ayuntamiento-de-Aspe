@@ -9,3 +9,4 @@
   - `server/routes/sitemap-pages.xml.ts`
   - reglas SEO/canonical relacionadas en `app/pages/index.vue` y `nuxt.config.ts`.
 - Evitar crear rutas duplicadas que representen la misma vista.
+- No hacer despliegues manuales: el despliegue lo gestiona GitHub Actions automáticamente.
