@@ -10,10 +10,77 @@
  *
  * Los llamados de análisis se reactivan cuando cambia el período seleccionado.
  */
-import { Zap, RefreshCw, MapPin, Wifi } from 'lucide-vue-next';
+import { Zap, RefreshCw, MapPin, Wifi, LayoutPanelTop, Map, BrainCircuit, Activity } from 'lucide-vue-next';
 
 type Periodo = 'today' | '7d' | '30d';
 type HorizontePrediccion = 0 | 1 | 2 | 3 | 7 | 14;
+type FiltroCargador = 'all' | string;
+type OpcionCargador = { id: string; nombre: string };
+type DashboardTab = 'resumen' | 'mapa' | 'inteligencia' | 'diagnostico';
+type DashboardTabTheme = {
+  button: string;
+  panel: string;
+  panelRing: string;
+  title: string;
+  badge: string;
+};
+
+const DASHBOARD_TABS: Array<{ id: DashboardTab; label: string; icon: any }> = [
+  { id: 'resumen', label: 'Resumen', icon: LayoutPanelTop },
+  { id: 'mapa', label: 'Mapa', icon: Map },
+  { id: 'inteligencia', label: 'Inteligencia', icon: BrainCircuit },
+  { id: 'diagnostico', label: 'Diagnóstico', icon: Activity },
+];
+
+const TAB_PATHS: Record<DashboardTab, string> = {
+  resumen: '/',
+  mapa: '/mapa',
+  inteligencia: '/inteligencia',
+  diagnostico: '/diagnostico',
+};
+
+const PATH_TO_TAB: Record<string, DashboardTab> = {
+  '/': 'resumen',
+  '/resumen': 'resumen',
+  '/mapa': 'mapa',
+  '/inteligencia': 'inteligencia',
+  '/diagnostico': 'diagnostico',
+};
+
+definePageMeta({
+  alias: ['/mapa', '/inteligencia', '/diagnostico'],
+});
+
+const TAB_THEMES: Record<DashboardTab, DashboardTabTheme> = {
+  resumen: {
+    button: 'border-emerald-400/35 bg-emerald-400/10 text-emerald-200 shadow-[0_0_30px_-12px_rgba(16,185,129,0.8)]',
+    panel: 'bg-gradient-to-br from-emerald-500/10 via-slate-900/70 to-slate-950/80',
+    panelRing: 'ring-emerald-500/25',
+    title: 'text-emerald-300',
+    badge: 'bg-emerald-500/15 text-emerald-200 ring-emerald-500/35',
+  },
+  mapa: {
+    button: 'border-cyan-400/35 bg-cyan-400/10 text-cyan-200 shadow-[0_0_30px_-12px_rgba(34,211,238,0.8)]',
+    panel: 'bg-gradient-to-br from-cyan-500/10 via-slate-900/70 to-slate-950/80',
+    panelRing: 'ring-cyan-500/25',
+    title: 'text-cyan-300',
+    badge: 'bg-cyan-500/15 text-cyan-200 ring-cyan-500/35',
+  },
+  inteligencia: {
+    button: 'border-amber-400/35 bg-amber-400/10 text-amber-100 shadow-[0_0_30px_-12px_rgba(251,191,36,0.8)]',
+    panel: 'bg-gradient-to-br from-amber-500/10 via-slate-900/70 to-slate-950/80',
+    panelRing: 'ring-amber-500/25',
+    title: 'text-amber-300',
+    badge: 'bg-amber-500/15 text-amber-100 ring-amber-500/35',
+  },
+  diagnostico: {
+    button: 'border-rose-400/35 bg-rose-400/10 text-rose-100 shadow-[0_0_30px_-12px_rgba(251,113,133,0.8)]',
+    panel: 'bg-gradient-to-br from-rose-500/10 via-slate-900/70 to-slate-950/80',
+    panelRing: 'ring-rose-500/25',
+    title: 'text-rose-300',
+    badge: 'bg-rose-500/15 text-rose-100 ring-rose-500/35',
+  },
+};
 
 const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
   ESIBE22E0001001: { lat: 38.341118679046346, lon: -0.7654778230267333 },
@@ -30,6 +97,37 @@ const STATION_MAP_LINKS: Record<string, string> = {
 // ─── Estado de período seleccionado ─────────────────────────────────────────
 const periodo = ref<Periodo>('7d');
 const diasPrediccion = ref<HorizontePrediccion>(0);
+const cargadorSeleccionado = ref<FiltroCargador>('all');
+const route = useRoute();
+const router = useRouter();
+
+function normalizarPath(path: string): string {
+  const clean = path.replace(/\/+$/, '');
+  return clean || '/';
+}
+
+function tabDesdePath(path: string): DashboardTab {
+  const normalizado = normalizarPath(path);
+  return PATH_TO_TAB[normalizado] ?? 'resumen';
+}
+
+const activeTab = ref<DashboardTab>(tabDesdePath(route.path));
+
+watch(
+  () => route.path,
+  (newPath) => {
+    const tab = tabDesdePath(newPath);
+    if (tab !== activeTab.value) activeTab.value = tab;
+  },
+);
+
+async function goToTab(tabId: DashboardTab) {
+  activeTab.value = tabId;
+  const targetPath = TAB_PATHS[tabId];
+  if (normalizarPath(route.path) !== targetPath) {
+    await router.push(targetPath);
+  }
+}
 
 // ─── Datos en tiempo real (cargadores) ──────────────────────────────────────
 const {
@@ -48,8 +146,11 @@ const {
   pending: heatmapPending,
   refresh: refrescarHeatmap,
 } = useFetch('/api/analytics/heatmap', {
-  query: computed(() => ({ periodo: periodo.value })),
-  watch: [periodo],
+  query: computed(() => ({
+    periodo: periodo.value,
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [periodo, cargadorSeleccionado],
   lazy: true,
 });
 
@@ -58,8 +159,11 @@ const {
   data:    prediccionData,
   pending: prediccionPending,
 } = useFetch('/api/analytics/prediction', {
-  query: computed(() => ({ dias: diasPrediccion.value })),
-  watch: [diasPrediccion],
+  query: computed(() => ({
+    dias: diasPrediccion.value,
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [diasPrediccion, cargadorSeleccionado],
   lazy: true,
 });
 
@@ -69,8 +173,11 @@ const {
   pending: metricasPending,
   refresh: refrescarMetricas,
 } = useFetch('/api/analytics/metrics', {
-  query: computed(() => ({ periodo: periodo.value })),
-  watch: [periodo],
+  query: computed(() => ({
+    periodo: periodo.value,
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [periodo, cargadorSeleccionado],
   lazy: true,
 });
 
@@ -81,8 +188,11 @@ const {
   pending: diagnosticoPending,
   refresh: refrescarDiagnostico,
 } = useFetch('/api/analytics/diagnostic', {
-  query: computed(() => ({ periodo: periodo.value })),
-  watch: [periodo],
+  query: computed(() => ({
+    periodo: periodo.value,
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [periodo, cargadorSeleccionado],
   lazy: true,
 });
 
@@ -90,8 +200,11 @@ const {
   data:    etaData,
   pending: etaPending,
 } = useFetch('/api/analytics/eta', {
-  query: computed(() => ({ minutes: etaMinutes.value })),
-  watch: [etaMinutes],
+  query: computed(() => ({
+    minutes: etaMinutes.value,
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [etaMinutes, cargadorSeleccionado],
   lazy: true,
 });
 
@@ -125,6 +238,44 @@ onBeforeUnmount(() => {
 // ─── Datos derivados ─────────────────────────────────────────────────────────
 const cargadores   = computed(() => cargadoresData.value?.cargadores ?? []);
 const ultimaActualizacion = computed(() => cargadoresData.value?.ultimaActualizacion ?? '');
+const opcionesCargador = computed<OpcionCargador[]>(() => {
+  const unicos = new Set<string>();
+  return cargadores.value
+    .filter((c: any) => {
+      if (!c?.station_id || unicos.has(c.station_id)) return false;
+      unicos.add(c.station_id);
+      return true;
+    })
+    .map((c: any) => ({
+      id: c.station_id as string,
+      nombre: c.location_name as string,
+    }));
+});
+
+watch(opcionesCargador, (opciones: OpcionCargador[]) => {
+  if (cargadorSeleccionado.value === 'all') return;
+  const existe = opciones.some((op: OpcionCargador) => op.id === cargadorSeleccionado.value);
+  if (!existe) cargadorSeleccionado.value = 'all';
+});
+
+const cargadorSeleccionadoLabel = computed(() => {
+  if (cargadorSeleccionado.value === 'all') return 'Todos los cargadores';
+  const found = opcionesCargador.value.find((op: OpcionCargador) => op.id === cargadorSeleccionado.value);
+  return found ? `${found.id} · ${found.nombre}` : cargadorSeleccionado.value;
+});
+
+const activeTabTheme = computed<DashboardTabTheme>(() => TAB_THEMES[activeTab.value]);
+const activeTabLabel = computed<string>(() => {
+  const found = DASHBOARD_TABS.find((tab) => tab.id === activeTab.value);
+  return found?.label ?? 'Resumen';
+});
+
+function tabButtonClass(tabId: DashboardTab): string {
+  if (activeTab.value === tabId) {
+    return TAB_THEMES[tabId].button;
+  }
+  return 'border border-transparent bg-slate-950/50 text-slate-400 hover:bg-slate-900 hover:text-slate-200';
+}
 
 function libresPorCargador(c: any) {
   if (typeof c.available_connectors === 'number') return Math.max(0, Math.min(2, c.available_connectors));
@@ -422,7 +573,7 @@ useHead({
 </script>
 
 <template>
-  <main class="min-h-screen bg-slate-950 px-4 py-6 sm:px-6 lg:px-8">
+  <main class="min-h-screen bg-[radial-gradient(1200px_600px_at_10%_-10%,rgba(16,185,129,0.08),transparent),radial-gradient(1000px_500px_at_90%_-5%,rgba(34,211,238,0.08),transparent),#020617] px-4 py-6 sm:px-6 lg:px-8">
     <div class="mx-auto max-w-6xl space-y-8">
 
       <!-- ════════ HEADER ════════ -->
@@ -471,7 +622,73 @@ useHead({
         </div>
       </header>
 
-      <!-- ════════ DISPONIBILIDAD POR PUNTO ════════ -->
+      <!-- ════════ NAVEGACIÓN DEL DASHBOARD ════════ -->
+      <nav
+        class="rounded-2xl border border-slate-800 bg-slate-900/60 p-2 backdrop-blur"
+        aria-label="Secciones del dashboard"
+      >
+        <div class="flex snap-x gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible md:pb-0">
+          <button
+            v-for="tab in DASHBOARD_TABS"
+            :key="tab.id"
+            class="min-w-[150px] snap-start flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all md:min-w-0"
+            :class="tabButtonClass(tab.id)"
+            @click="goToTab(tab.id)"
+          >
+            <component :is="tab.icon" class="h-4 w-4" />
+            {{ tab.label }}
+          </button>
+        </div>
+      </nav>
+
+      <!-- ════════ BARRA DE CONTROLES GLOBAL ════════ -->
+      <section
+        class="rounded-2xl border border-slate-800 p-4 transition-all"
+        :class="[activeTabTheme.panel, `ring-1 ${activeTabTheme.panelRing}`]"
+      >
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <FilterButtons v-model="periodo" />
+          <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
+            Cargador
+            <select
+              v-model="cargadorSeleccionado"
+              class="max-w-[240px] rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 outline-none"
+            >
+              <option value="all">Todos</option>
+              <option
+                v-for="op in opcionesCargador"
+                :key="op.id"
+                :value="op.id"
+              >
+                {{ op.id }} · {{ op.nombre }}
+              </option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
+            IA en
+            <select
+              v-model.number="diasPrediccion"
+              class="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 outline-none"
+            >
+              <option :value="0">hoy</option>
+              <option :value="1">1 día</option>
+              <option :value="2">2 días</option>
+              <option :value="3">3 días</option>
+              <option :value="7">7 días</option>
+              <option :value="14">14 días</option>
+            </select>
+          </label>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+          <span class="inline-flex items-center rounded-full px-2.5 py-1 ring-1" :class="activeTabTheme.badge">
+            Vista: {{ activeTabLabel }}
+          </span>
+          <span class="inline-flex items-center rounded-full bg-slate-900/80 px-2.5 py-1 text-slate-300 ring-1 ring-slate-700/80">
+            Filtro: {{ cargadorSeleccionadoLabel }}
+          </span>
+        </div>
+      </section>
+
       <!-- ════════ ERROR ════════ -->
       <div
         v-if="cargadoresError"
@@ -480,164 +697,164 @@ useHead({
         Error al cargar los datos: {{ cargadoresError.message }}
       </div>
 
-      <!-- ════════ TARJETAS EN TIEMPO REAL ════════ -->
-      <section aria-labelledby="estado-actual">
-        <h2
-          id="estado-actual"
-          class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500"
-        >
-          Estado Actual · {{ cargadores.length }} puntos · {{ conectoresLibres }}/{{ conectoresTotales }} conectores libres
-        </h2>
+      <Transition name="tab-panel" mode="out-in">
+        <div :key="activeTab">
+          <!-- ════════ TAB: RESUMEN ════════ -->
+          <section v-if="activeTab === 'resumen'" aria-labelledby="tab-resumen" class="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5">
+            <h2 id="tab-resumen" class="text-xs font-semibold uppercase tracking-wider" :class="activeTabTheme.title">
+              Resumen operativo
+            </h2>
 
-        <!-- Skeleton mientras carga -->
-        <div
-          v-if="cargadoresPending && !cargadores.length"
-          class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
-        >
-          <div
-            v-for="i in 5"
-            :key="i"
-            class="h-36 animate-pulse rounded-2xl border border-slate-800 bg-slate-900"
-          />
-        </div>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <p class="text-xs text-slate-500">Conectores libres</p>
+                <p class="mt-1 text-3xl font-bold text-emerald-400">{{ conectoresLibres }}</p>
+                <p class="text-xs text-slate-600">de {{ conectoresTotales }} conectores</p>
+              </div>
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <p class="text-xs text-slate-500">Puntos disponibles</p>
+                <p class="mt-1 text-3xl font-bold text-white">{{ libres }}</p>
+                <p class="text-xs text-slate-600">{{ cargadores.length }} puntos monitorizados</p>
+              </div>
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <p class="text-xs text-slate-500">Puntos ocupados</p>
+                <p class="mt-1 text-3xl font-bold text-rose-400">{{ ocupados }}</p>
+                <p class="text-xs text-slate-600">estado instantáneo</p>
+              </div>
+            </div>
 
-        <div
-          v-else
-          class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
-        >
-          <ChargerCard
-            v-for="c in cargadores"
-            :key="c.station_id"
-            :station-id="c.station_id"
-            :location-name="c.location_name"
-            :is-available="c.is_available"
-            :power-kw="c.power_kw"
-            :updated-at="c.availability_updated_at || c.created_at"
-            :available-connectors="libresPorCargador(c)"
-            :total-connectors="c.total_connectors || 2"
-            :connector-type="c.connector_type"
-            :connectors="c.connectors"
-          />
-        </div>
-      </section>
+            <section aria-labelledby="estado-actual">
+              <h3 id="estado-actual" class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Estado actual por punto
+              </h3>
 
-      <!-- ════════ MAPA DE UBICACIONES ════════ -->
-      <section aria-labelledby="mapa-ubicaciones">
-        <div class="mb-3 flex items-center justify-between gap-3">
-          <h2
-            id="mapa-ubicaciones"
-            class="text-xs font-semibold uppercase tracking-wider text-slate-500"
-          >
-            Mapa y Disponibilidad por Cargador
-          </h2>
-          <span class="text-[11px] text-slate-500">Aspe · Alicante</span>
-        </div>
-
-        <div class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
-          <ClientOnly>
-            <ChargersMap :points="disponibilidadPorPunto" />
-            <template #fallback>
-              <div class="h-72 w-full animate-pulse bg-slate-900" />
-            </template>
-          </ClientOnly>
-          <div class="grid grid-cols-1 gap-2 border-t border-slate-800 p-3 sm:grid-cols-2 lg:grid-cols-3">
-            <a
-              v-for="p in disponibilidadPorPunto"
-              :key="`map-${p.stationId}`"
-              :href="p.googleUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="rounded-lg border px-3 py-2 text-xs transition-colors"
-              :class="classesEstadoPunto(p.libres, p.total).card"
-            >
-              <span class="block font-medium" :class="classesEstadoPunto(p.libres, p.total).detail">{{ p.stationId }} · {{ p.libres }}/{{ p.total }}</span>
-              <span class="block truncate text-slate-500">{{ p.locationName }}</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <!-- ════════ INTELIGENCIA / ANALÍTICA ════════ -->
-      <section aria-labelledby="analitica">
-        <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2
-            id="analitica"
-            class="text-xs font-semibold uppercase tracking-wider text-slate-500"
-          >
-            Análisis e Inteligencia
-          </h2>
-          <div class="flex flex-wrap items-center gap-2">
-            <!-- Filtro de período -->
-            <FilterButtons v-model="periodo" />
-            <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
-              IA en
-              <select
-                v-model.number="diasPrediccion"
-                class="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 outline-none"
+              <div
+                v-if="cargadoresPending && !cargadores.length"
+                class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
               >
-                <option :value="0">hoy</option>
-                <option :value="1">1 día</option>
-                <option :value="2">2 días</option>
-                <option :value="3">3 días</option>
-                <option :value="7">7 días</option>
-                <option :value="14">14 días</option>
-              </select>
-            </label>
-          </div>
+                <div
+                  v-for="i in 5"
+                  :key="i"
+                  class="h-36 animate-pulse rounded-2xl border border-slate-800 bg-slate-900"
+                />
+              </div>
+
+              <div
+                v-else
+                class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+              >
+                <ChargerCard
+                  v-for="c in cargadores"
+                  :key="c.station_id"
+                  :station-id="c.station_id"
+                  :location-name="c.location_name"
+                  :is-available="c.is_available"
+                  :power-kw="c.power_kw"
+                  :updated-at="c.availability_updated_at || c.created_at"
+                  :available-connectors="libresPorCargador(c)"
+                  :total-connectors="c.total_connectors || 2"
+                  :connector-type="c.connector_type"
+                  :connectors="c.connectors"
+                />
+              </div>
+            </section>
+          </section>
+
+          <!-- ════════ TAB: MAPA ════════ -->
+          <section v-else-if="activeTab === 'mapa'" aria-labelledby="tab-mapa" class="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5">
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <h2 id="tab-mapa" class="text-xs font-semibold uppercase tracking-wider" :class="activeTabTheme.title">
+                Mapa y disponibilidad por cargador
+              </h2>
+              <span class="text-[11px] text-slate-500">Aspe · Alicante</span>
+            </div>
+
+            <div class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
+              <ClientOnly>
+                <ChargersMap :points="disponibilidadPorPunto" />
+                <template #fallback>
+                  <div class="h-72 w-full animate-pulse bg-slate-900" />
+                </template>
+              </ClientOnly>
+              <div class="grid grid-cols-1 gap-2 border-t border-slate-800 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                <a
+                  v-for="p in disponibilidadPorPunto"
+                  :key="`map-${p.stationId}`"
+                  :href="p.googleUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="rounded-lg border px-3 py-2 text-xs transition-colors"
+                  :class="classesEstadoPunto(p.libres, p.total).card"
+                >
+                  <span class="block font-medium" :class="classesEstadoPunto(p.libres, p.total).detail">{{ p.stationId }} · {{ p.libres }}/{{ p.total }}</span>
+                  <span class="block truncate text-slate-500">{{ p.locationName }}</span>
+                </a>
+              </div>
+            </div>
+          </section>
+
+          <!-- ════════ TAB: INTELIGENCIA ════════ -->
+          <section v-else-if="activeTab === 'inteligencia'" aria-labelledby="tab-inteligencia" class="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5">
+            <h2 id="tab-inteligencia" class="mb-4 text-xs font-semibold uppercase tracking-wider" :class="activeTabTheme.title">
+              Inteligencia y analítica
+            </h2>
+
+            <div class="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div v-if="heatmapPending" class="h-72 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+              <WeeklyHeatmap
+                v-else-if="heatmapData"
+                :datos="heatmapData.datos ?? []"
+              />
+
+              <div v-if="prediccionPending" class="h-72 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+              <PredictionWidget
+                v-else-if="prediccionData"
+                :mejor-hora="prediccionData.mejorHora"
+                :probabilidad="prediccionData.probabilidad"
+                :dia-semana="prediccionData.diaSemana"
+                :fecha-objetivo="prediccionData.fechaObjetivo"
+                :dias-hacia-futuro="prediccionData.diasHaciaFuturo"
+                :franjas="prediccionData.franjas"
+                :horas-recomendadas="prediccionData.horasRecomendadas"
+                :hay-suficientes-datos="prediccionData.haySuficientesDatos"
+                :dias-con-datos="prediccionData.diasConDatos"
+                :muestras-totales="prediccionData.muestrasTotales"
+                :dias-minimos-recomendados="prediccionData.diasMinimosRecomendados"
+                :dias-faltantes-estimados="prediccionData.diasFaltantesEstimados"
+                :ventana-historica-dias="prediccionData.ventanaHistoricaDias"
+              />
+            </div>
+
+            <div v-if="metricasPending" class="h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+            <UsageStats
+              v-else-if="metricasData"
+              :tasa-ocupacion-media="metricasData.tasaOcupacionMedia"
+              :sesiones-estimadas="metricasData.sesionesEstimadas"
+              :minutos-ocupados-medio="metricasData.minutosOcupadosMedio"
+              :cargador-mas-usado="metricasData.cargadorMasUsado"
+              :por-estacion="metricasData.porEstacion ?? []"
+            />
+          </section>
+
+          <!-- ════════ TAB: DIAGNÓSTICO ════════ -->
+          <section v-else aria-labelledby="tab-diagnostico" class="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5">
+            <h2 id="tab-diagnostico" class="mb-4 text-xs font-semibold uppercase tracking-wider" :class="activeTabTheme.title">
+              Diagnóstico avanzado
+            </h2>
+
+            <div v-if="diagnosticoPending || etaPending" class="h-56 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+            <AiDiagnostics
+              v-else-if="diagnosticoData"
+              :saturacion="diagnosticoData.saturacion"
+              :averias="diagnosticoData.averias ?? []"
+              :insights="diagnosticoData.insights ?? []"
+              :eta-minutes="etaMinutes"
+              :eta-data="etaData ?? null"
+              @update:eta-minutes="etaMinutes = $event"
+            />
+          </section>
         </div>
-
-        <!-- ── Fila 1: heatmap + predicción ───────────────────────────── -->
-        <div class="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <!-- Heatmap semanal -->
-          <div v-if="heatmapPending" class="h-72 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
-          <WeeklyHeatmap
-            v-else-if="heatmapData"
-            :datos="heatmapData.datos ?? []"
-          />
-
-          <!-- Widget de predicción -->
-          <div v-if="prediccionPending" class="h-72 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
-          <PredictionWidget
-            v-else-if="prediccionData"
-            :mejor-hora="prediccionData.mejorHora"
-            :probabilidad="prediccionData.probabilidad"
-            :dia-semana="prediccionData.diaSemana"
-            :fecha-objetivo="prediccionData.fechaObjetivo"
-            :dias-hacia-futuro="prediccionData.diasHaciaFuturo"
-            :franjas="prediccionData.franjas"
-            :horas-recomendadas="prediccionData.horasRecomendadas"
-            :hay-suficientes-datos="prediccionData.haySuficientesDatos"
-            :dias-con-datos="prediccionData.diasConDatos"
-            :muestras-totales="prediccionData.muestrasTotales"
-            :dias-minimos-recomendados="prediccionData.diasMinimosRecomendados"
-            :dias-faltantes-estimados="prediccionData.diasFaltantesEstimados"
-            :ventana-historica-dias="prediccionData.ventanaHistoricaDias"
-          />
-        </div>
-
-        <!-- ── Fila 2: métricas de uso ─────────────────────────────────── -->
-        <div v-if="metricasPending" class="h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
-        <UsageStats
-          v-else-if="metricasData"
-          :tasa-ocupacion-media="metricasData.tasaOcupacionMedia"
-          :sesiones-estimadas="metricasData.sesionesEstimadas"
-          :minutos-ocupados-medio="metricasData.minutosOcupadosMedio"
-          :cargador-mas-usado="metricasData.cargadorMasUsado"
-          :por-estacion="metricasData.porEstacion ?? []"
-        />
-
-        <div v-if="diagnosticoPending || etaPending" class="mt-4 h-56 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
-        <AiDiagnostics
-          v-else-if="diagnosticoData"
-          class="mt-4"
-          :saturacion="diagnosticoData.saturacion"
-          :averias="diagnosticoData.averias ?? []"
-          :insights="diagnosticoData.insights ?? []"
-          :eta-minutes="etaMinutes"
-          :eta-data="etaData ?? null"
-          @update:eta-minutes="etaMinutes = $event"
-        />
-      </section>
+      </Transition>
 
       <!-- ════════ FOOTER ════════ -->
       <footer class="border-t border-slate-800 pt-4 text-center text-xs text-slate-600">
@@ -656,3 +873,16 @@ useHead({
     </div>
   </main>
 </template>
+
+<style scoped>
+.tab-panel-enter-active,
+.tab-panel-leave-active {
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+.tab-panel-enter-from,
+.tab-panel-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+</style>

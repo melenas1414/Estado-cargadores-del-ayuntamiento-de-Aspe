@@ -76,4 +76,9 @@ export default defineNuxtConfig({
   build: {
     transpile: ['vue-chartjs', 'chart.js'],
   },
+
+  // ─── Reglas de rutas (SEO friendly URLs) ────────────────────────────────
+  routeRules: {
+    '/resumen': { redirect: { to: '/', statusCode: 301 } },
+  },
 });

@@ -177,11 +177,19 @@ El dashboard estará disponible en `http://localhost:3000`.
 - **Mapa de calor semanal**: ocupación por hora (0-23) y día de la semana
 - **Predicción inteligente**: mejor hora para cargar hoy con % de confianza
 - **Métricas de uso**: tasa de ocupación media, sesiones estimadas, duración media, cargador más usado
+- **Diagnóstico avanzado**: saturación, posibles averías, ETA de disponibilidad e insights automáticos
+
+### Navegación profesional por pestañas
+- **Resumen**: visión operativa global y estado actual por punto
+- **Mapa**: localización y disponibilidad por cargador
+- **Inteligencia**: heatmap, predicción y KPIs de uso
+- **Diagnóstico**: señales técnicas, recomendaciones y probabilidad al llegar
 
 ### Filtros
 - **Hoy** — Últimas 24 horas
 - **Últimos 7 días** — Semana completa
 - **Mes completo** — 30 días
+- **Cargador** — Filtro global por estación para analítica (heatmap, predicción, métricas, diagnóstico y ETA)
 
 ---
 

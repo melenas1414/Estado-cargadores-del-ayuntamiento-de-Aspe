@@ -15,20 +15,33 @@ const DIAS_POR_PERIODO: Record<string, number> = {
   '30d': 30,
 };
 
+function parseStationId(raw: unknown): string | null {
+  const stationId = String(raw ?? '').trim();
+  if (!stationId || stationId === 'all') return null;
+  return stationId;
+}
+
 export default defineEventHandler(async (event) => {
   const query   = getQuery(event);
   const periodo = String(query.periodo ?? '7d');
   const dias    = DIAS_POR_PERIODO[periodo] ?? 7;
+  const stationId = parseStationId(query.station_id);
 
   const supabase = await serverSupabaseClient(event);
   const desde    = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
 
   // ─── Obtener todos los registros del período ────────────────────────────
-  const { data, error } = await supabase
+  let queryLogs = supabase
     .from('charging_logs')
     .select('station_id, location_name, is_available, created_at')
     .gte('created_at', desde.toISOString())
     .order('created_at', { ascending: true });
+
+  if (stationId) {
+    queryLogs = queryLogs.eq('station_id', stationId);
+  }
+
+  const { data, error } = await queryLogs;
 
   if (error) {
     throw createError({

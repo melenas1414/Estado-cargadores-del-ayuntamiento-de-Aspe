@@ -29,20 +29,33 @@ function parseDiasHaciaFuturo(raw: unknown): number {
   return Math.max(0, Math.min(30, Math.trunc(n)));
 }
 
+function parseStationId(raw: unknown): string | null {
+  const stationId = String(raw ?? '').trim();
+  if (!stationId || stationId === 'all') return null;
+  return stationId;
+}
+
 export default defineEventHandler(async (event) => {
   const supabase = await serverSupabaseClient(event);
   const query = getQuery(event);
   const diasHaciaFuturo = parseDiasHaciaFuturo(query.dias);
+  const stationId = parseStationId(query.station_id);
 
   const ahora = new Date();
   const fechaObjetivo = new Date(ahora.getTime() + diasHaciaFuturo * 24 * 60 * 60 * 1000);
   const diaObjetivo = fechaObjetivo.getDay(); // 0 = Dom … 6 = Sáb
   const haceVentana = new Date(ahora.getTime() - VENTANA_HISTORICA_DIAS * 24 * 60 * 60 * 1000);
 
-  const { data, error } = await supabase
+  let queryLogs = supabase
     .from('charging_logs')
     .select('created_at, is_available')
     .gte('created_at', haceVentana.toISOString());
+
+  if (stationId) {
+    queryLogs = queryLogs.eq('station_id', stationId);
+  }
+
+  const { data, error } = await queryLogs;
 
   if (error) {
     throw createError({

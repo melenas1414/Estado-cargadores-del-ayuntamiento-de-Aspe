@@ -18,19 +18,31 @@ function parseMinutes(raw: unknown): number {
   return Math.max(0, Math.min(180, Math.trunc(n)));
 }
 
+function parseStationId(raw: unknown): string | null {
+  const stationId = String(raw ?? '').trim();
+  if (!stationId || stationId === 'all') return null;
+  return stationId;
+}
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const minutes = parseMinutes(query.minutes);
-  const stationId = query.stationId ? String(query.stationId) : null;
+  const stationId = parseStationId(query.station_id ?? query.stationId);
 
   const supabase = await serverSupabaseClient(event);
   const since = new Date(Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000);
 
-  const { data, error } = await supabase
+  let queryLogs = supabase
     .from('charging_logs')
     .select('station_id, location_name, created_at, is_available, available_connectors, total_connectors')
     .gte('created_at', since.toISOString())
     .order('created_at', { ascending: true });
+
+  if (stationId) {
+    queryLogs = queryLogs.eq('station_id', stationId);
+  }
+
+  const { data, error } = await queryLogs;
 
   if (error) {
     throw createError({

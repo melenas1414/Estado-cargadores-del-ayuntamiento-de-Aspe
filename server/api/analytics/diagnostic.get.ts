@@ -40,19 +40,32 @@ function inferSampleMinutes(sortedTimestamps: number[]): number {
   return Math.max(1, round(deltas[Math.floor(deltas.length / 2)]));
 }
 
+function parseStationId(raw: unknown): string | null {
+  const stationId = String(raw ?? '').trim();
+  if (!stationId || stationId === 'all') return null;
+  return stationId;
+}
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const periodo = String(query.periodo ?? '7d');
   const dias = DIAS_POR_PERIODO[periodo] ?? 7;
+  const stationId = parseStationId(query.station_id);
 
   const supabase = await serverSupabaseClient(event);
   const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
 
-  const { data, error } = await supabase
+  let queryLogs = supabase
     .from('charging_logs')
     .select('station_id, location_name, created_at, is_available, available_connectors, total_connectors, out_of_service_connectors, availability_updated_at')
     .gte('created_at', desde.toISOString())
     .order('created_at', { ascending: true });
+
+  if (stationId) {
+    queryLogs = queryLogs.eq('station_id', stationId);
+  }
+
+  const { data, error } = await queryLogs;
 
   if (error) {
     throw createError({
