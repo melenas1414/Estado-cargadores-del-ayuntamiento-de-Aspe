@@ -34,6 +34,11 @@ const props = defineProps<{
       muestras: number;
     } | null;
   } | null;
+  cargadorSeleccionado?: {
+    stationId: string;
+    locationName: string;
+    direccion: string;
+  } | null;
 }>();
 
 const emit = defineEmits<{
@@ -91,6 +96,17 @@ const botonesEta = [5, 15, 30, 60];
         >
           {{ m }} min
         </button>
+      </div>
+
+      <div
+        v-if="cargadorSeleccionado"
+        class="mb-3 rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3"
+      >
+        <p class="text-xs text-cyan-200">Cargador analizado</p>
+        <p class="mt-0.5 text-sm font-semibold text-white">
+          {{ cargadorSeleccionado.stationId }} · {{ cargadorSeleccionado.locationName }}
+        </p>
+        <p class="text-[11px] text-slate-300">{{ cargadorSeleccionado.direccion }}</p>
       </div>
 
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">

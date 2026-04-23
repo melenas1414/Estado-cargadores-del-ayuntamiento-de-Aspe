@@ -94,6 +94,14 @@ const STATION_MAP_LINKS: Record<string, string> = {
   ESIBE22E0001005: 'https://maps.app.goo.gl/9q9Jibv3bMDw16xG7',
 };
 
+const STATION_STREETS: Record<string, string> = {
+  ESIBE22E0001001: 'Avenida Carlos Soria, 11',
+  ESIBE22E0001002: 'Avenida Constitucion, 42',
+  ESIBE22E0001003: 'Avenida Padre Ismael, 34',
+  ESIBE22E0001004: 'Avenida Juan Carlos I, 36',
+  ESIBE22E0001005: 'Calle Orihuela, 100',
+};
+
 // ─── Estado de período seleccionado ─────────────────────────────────────────
 const periodo = ref<Periodo>('7d');
 const diasPrediccion = ref<HorizontePrediccion>(0);
@@ -269,6 +277,19 @@ const cargadorSeleccionadoLabel = computed(() => {
   return found ? `${found.id} · ${found.nombre}` : cargadorSeleccionado.value;
 });
 
+const cargadorSeleccionadoDetalle = computed(() => {
+  if (cargadorSeleccionado.value === 'all') return null;
+
+  const stationId = cargadorSeleccionado.value;
+  const actual = cargadores.value.find((c: any) => c.station_id === stationId);
+
+  return {
+    stationId,
+    locationName: actual?.location_name ?? stationId,
+    direccion: STATION_STREETS[stationId] ?? 'Direccion no disponible',
+  };
+});
+
 const activeTabTheme = computed<DashboardTabTheme>(() => TAB_THEMES[activeTab.value]);
 const activeTabLabel = computed<string>(() => {
   const found = DASHBOARD_TABS.find((tab) => tab.id === activeTab.value);
@@ -287,12 +308,12 @@ function libresPorCargador(c: any) {
   return c.is_available ? 1 : 0;
 }
 
-const libres   = computed(() => cargadores.value.filter((c: any) => c.is_available).length);
-const ocupados = computed(() => cargadores.value.filter((c: any) => !c.is_available).length);
-const conectoresLibres = computed(() => cargadores.value.reduce((sum: number, c: any) => {
+const libres   = computed(() => cargadoresFiltrados.value.filter((c: any) => c.is_available).length);
+const ocupados = computed(() => cargadoresFiltrados.value.filter((c: any) => !c.is_available).length);
+const conectoresLibres = computed(() => cargadoresFiltrados.value.reduce((sum: number, c: any) => {
   return sum + libresPorCargador(c);
 }, 0));
-const conectoresTotales = computed(() => cargadores.value.reduce((sum: number, c: any) => {
+const conectoresTotales = computed(() => cargadoresFiltrados.value.reduce((sum: number, c: any) => {
   if (typeof c.total_connectors === 'number' && c.total_connectors > 0) return sum + c.total_connectors;
   return sum + 2;
 }, 0));
@@ -309,7 +330,7 @@ const horaLegible = computed(() => {
 
 // Supertítulo de estado global
 const estadoGlobal = computed(() => {
-  if (!cargadores.value.length) return null;
+  if (!cargadoresFiltrados.value.length) return null;
   if (conectoresLibres.value === conectoresTotales.value) {
     return { texto: `${conectoresLibres.value}/${conectoresTotales.value} conectores libres`, clase: 'text-emerald-400' };
   }
@@ -855,6 +876,7 @@ useHead({
               :insights="diagnosticoData.insights ?? []"
               :eta-minutes="etaMinutes"
               :eta-data="etaData ?? null"
+              :cargador-seleccionado="cargadorSeleccionadoDetalle"
               @update:eta-minutes="etaMinutes = $event"
             />
           </section>
