@@ -352,7 +352,39 @@ Deno.serve(async (_req) => {
   try {
     const results = await checkAspeStationsStatus(STATIONS, googleApiKey)
 
-    const rowsToInsert = results.map(({ station_id, location_name, is_available, available_connectors, total_connectors, out_of_service_connectors, availability_updated_at, power_kw }) => ({
+    // Solo persistimos muestras con datos dinámicos válidos.
+    // Si Google falla (ej. billing deshabilitado) evitamos ensuciar el histórico con nulls.
+    const validResults = results.filter((r) => (
+      r.status !== 'SIN_DATOS_DINAMICOS' &&
+      r.available_connectors !== null &&
+      r.total_connectors !== null
+    ))
+
+    if (!validResults.length) {
+      const sourceSummary = results.reduce<Record<string, number>>((acc, r) => {
+        acc[r.source] = (acc[r.source] ?? 0) + 1
+        return acc
+      }, {})
+
+      const statusSummary = results.reduce<Record<string, number>>((acc, r) => {
+        acc[r.status] = (acc[r.status] ?? 0) + 1
+        return acc
+      }, {})
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          inserted: 0,
+          skipped: true,
+          reason: 'Sin datos dinámicos válidos desde Google Places',
+          sourceSummary,
+          statusSummary,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+
+    const rowsToInsert = validResults.map(({ station_id, location_name, is_available, available_connectors, total_connectors, out_of_service_connectors, availability_updated_at, power_kw }) => ({
       station_id,
       location_name,
       is_available,
@@ -394,7 +426,7 @@ Deno.serve(async (_req) => {
       return acc
     }, {})
 
-    const chargers = results.map((r) => ({
+    const chargers = validResults.map((r) => ({
       station_id: r.station_id,
       location_name: r.location_name,
       google_name: r.google_name,

@@ -18,7 +18,7 @@ where exists (
 -- Programa la llamada cada 15 minutos
 select cron.schedule(
   'monitor-cargadores-aspe',
-  '*/15 * * * *',
+  '*/5 * * * *',
   $$
   select
     net.http_post(
