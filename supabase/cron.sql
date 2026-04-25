@@ -15,20 +15,12 @@ where exists (
   select 1 from cron.job where jobname = 'monitor-cargadores-aspe'
 );
 
--- Programa la llamada cada 15 minutos
+-- Programa la llamada cada 5 minutos
 select cron.schedule(
   'monitor-cargadores-aspe',
   '*/5 * * * *',
   $$
-  select
-    net.http_post(
-      url := 'https://<PROJECT_REF>.supabase.co/functions/v1/monitor-cargadores',
-      headers := jsonb_build_object(
-        'Content-Type', 'application/json',
-        'Authorization', 'Bearer <SERVICE_ROLE_KEY>'
-      ),
-      body := '{}'::jsonb
-    ) as request_id;
+  select public.invoke_monitor_cargadores();
   $$
 );
 

@@ -6,9 +6,14 @@ type Station = {
   station_id: string
   location_name: string
   google_place_id?: string
+  // Ajuste sobre la disponibilidad media de red cuando Google no devuelve availableCount.
+  // Ejemplo: +0.15 = asumimos 15 puntos porcentuales más de disponibilidad.
+  availability_bias?: number
 }
 
 type EvAvailabilityStatus = 'DISPONIBLE' | 'OCUPADO' | 'SIN_DATOS_DINAMICOS'
+
+type DataQuality = 'observed' | 'estimated'
 
 type StationResult = {
   station_id: string
@@ -24,6 +29,7 @@ type StationResult = {
   connector_type: string | null
   connectors: ConnectorDetail[]
   source: string
+  data_quality: DataQuality
 }
 
 type ConnectorAggregation = {
@@ -76,6 +82,8 @@ const STATIONS: Station[] = [
     station_id: 'ESIBE22E0001002',
     location_name: 'Av. Constitución 42, Aspe',
     google_place_id: 'ChIJW5B0N8jHYw0RFVSeTep4lIY',
+    // Zona comercial: menor presión residencial en ciertas franjas.
+    availability_bias: 0.15,
   },
   {
     station_id: 'ESIBE22E0001003',
@@ -286,7 +294,7 @@ async function checkAspeStationsStatus(
   stations: Station[],
   googleApiKey: string,
 ): Promise<StationResult[]> {
-  return Promise.all(
+  const rawResults = await Promise.all(
     stations.map(async (station): Promise<StationResult> => {
       try {
         const { googleName, status, snapshot } = await fetchGooglePlacesStatus(station, googleApiKey)
@@ -304,6 +312,7 @@ async function checkAspeStationsStatus(
           connector_type: snapshot.connector_type,
           connectors: snapshot.connectors,
           source: 'google-places',
+          data_quality: 'observed',
         }
       } catch (error) {
         return {
@@ -320,10 +329,47 @@ async function checkAspeStationsStatus(
           connector_type: null,
           connectors: [],
           source: `google-places-error:${error instanceof Error ? error.message : 'unknown'}`,
+          data_quality: 'observed',
         }
       }
     }),
   )
+
+  const stationById = new Map(stations.map((s) => [s.station_id, s]))
+
+  const dynamicWithAvailability = rawResults.filter((r) => (
+    r.status !== 'SIN_DATOS_DINAMICOS' &&
+    typeof r.available_connectors === 'number' &&
+    typeof r.total_connectors === 'number' &&
+    r.total_connectors > 0
+  ))
+
+  const networkAvailabilityRatio = dynamicWithAvailability.length
+    ? dynamicWithAvailability.reduce((sum, r) => sum + ((r.available_connectors as number) / (r.total_connectors as number)), 0) / dynamicWithAvailability.length
+    : null
+
+  const estimatedResults = rawResults.map((r) => {
+    if (r.status !== 'SIN_DATOS_DINAMICOS') return r
+    if (typeof r.total_connectors !== 'number' || r.total_connectors <= 0) return r
+    if (networkAvailabilityRatio === null) return r
+
+    const stationConfig = stationById.get(r.station_id)
+    const bias = stationConfig?.availability_bias ?? 0
+    const adjustedRatio = Math.max(0, Math.min(1, networkAvailabilityRatio + bias))
+    const estimatedAvailable = Math.max(0, Math.min(r.total_connectors, Math.round(r.total_connectors * adjustedRatio)))
+    const estimatedStatus: EvAvailabilityStatus = estimatedAvailable > 0 ? 'DISPONIBLE' : 'OCUPADO'
+
+    return {
+      ...r,
+      status: estimatedStatus,
+      is_available: estimatedStatus === 'DISPONIBLE',
+      available_connectors: estimatedAvailable,
+      source: `estimated-network-ratio:${networkAvailabilityRatio.toFixed(3)}:bias:${bias.toFixed(2)}`,
+      data_quality: 'estimated' as DataQuality,
+    }
+  })
+
+  return estimatedResults
 }
 
 // ─── Edge Function ────────────────────────────────────────────────────────────
@@ -384,7 +430,7 @@ Deno.serve(async (_req) => {
       )
     }
 
-    const rowsToInsert = validResults.map(({ station_id, location_name, is_available, available_connectors, total_connectors, out_of_service_connectors, availability_updated_at, power_kw }) => ({
+    const rowsToInsert = validResults.map(({ station_id, location_name, is_available, available_connectors, total_connectors, out_of_service_connectors, availability_updated_at, power_kw, source, data_quality }) => ({
       station_id,
       location_name,
       is_available,
@@ -393,6 +439,8 @@ Deno.serve(async (_req) => {
       total_connectors,
       out_of_service_connectors,
       availability_updated_at,
+      source,
+      data_quality,
     }))
 
     const { error: insertError } = await supabase.from('charging_logs').insert(rowsToInsert)

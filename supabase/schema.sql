@@ -18,7 +18,9 @@ CREATE TABLE public.charging_logs (
   available_connectors INT,
   total_connectors     INT,
   out_of_service_connectors INT,
-  availability_updated_at TIMESTAMPTZ
+  availability_updated_at TIMESTAMPTZ,
+  source       TEXT,
+  data_quality TEXT NOT NULL DEFAULT 'observed'
 );
 
 -- ─── Índices para consultas frecuentes ───────────────────────
@@ -77,3 +79,5 @@ COMMENT ON COLUMN public.charging_logs.available_connectors IS 'Número de conec
 COMMENT ON COLUMN public.charging_logs.total_connectors     IS 'Número total de conectores detectados en la estación';
 COMMENT ON COLUMN public.charging_logs.out_of_service_connectors IS 'Número de conectores fuera de servicio reportados por Google Places';
 COMMENT ON COLUMN public.charging_logs.availability_updated_at IS 'Fecha y hora del último dato dinámico reportado por Google Places';
+COMMENT ON COLUMN public.charging_logs.source        IS 'Origen del dato: google-places, estimated-network-ratio:..., google-places-error:...';
+COMMENT ON COLUMN public.charging_logs.data_quality  IS 'Calidad del dato: observed = dato real de Google Places, estimated = estimación por ratio de red';

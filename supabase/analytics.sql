@@ -57,7 +57,8 @@ SELECT
     1
   ) AS pct_media_movil_1h
 FROM public.charging_logs
-WHERE created_at >= NOW() - INTERVAL '24 hours';
+WHERE created_at >= NOW() - INTERVAL '24 hours'
+  AND data_quality = 'observed';
 
 -- =============================================================
 -- VISTA 2: Disponibilidad histórica por hora del día y día de semana
@@ -85,6 +86,7 @@ SELECT
 FROM public.charging_logs
 WHERE
   available_connectors IS NOT NULL
+  AND data_quality = 'observed'
   AND created_at >= NOW() - INTERVAL '90 days'
 GROUP BY station_id, location_name, dia_semana, nombre_dia, hora
 ORDER BY station_id, dia_semana, hora;
@@ -108,6 +110,7 @@ WITH diario AS (
   FROM public.charging_logs
   WHERE
     available_connectors IS NOT NULL
+    AND data_quality = 'observed'
     AND created_at >= NOW() - INTERVAL '30 days'
   GROUP BY station_id, location_name, fecha
 )
@@ -147,26 +150,34 @@ ORDER BY station_id, fecha DESC;
 -- Uso: detectar las horas donde la red está más presionada
 -- =============================================================
 CREATE VIEW public.v_picos_demanda AS
+WITH base AS (
+  SELECT
+    EXTRACT(HOUR FROM created_at AT TIME ZONE 'Europe/Madrid')::int AS hora,
+    TO_CHAR(created_at AT TIME ZONE 'Europe/Madrid', 'Day')          AS dia_semana,
+    EXTRACT(DOW FROM created_at AT TIME ZONE 'Europe/Madrid')::int   AS num_dia,
+    COUNT(*)                                                          AS total_muestras,
+    SUM(CASE WHEN NOT is_available THEN 1 ELSE 0 END)                AS muestras_ocupado,
+    ROUND((SUM(CASE WHEN NOT is_available THEN 1.0 ELSE 0.0 END) / NULLIF(COUNT(*), 0) * 100)::numeric, 1) AS pct_ocupacion,
+    COUNT(DISTINCT station_id)                                        AS estaciones_monitorizadas
+  FROM public.charging_logs
+  WHERE created_at >= NOW() - INTERVAL '90 days'
+    AND data_quality = 'observed'
+  GROUP BY 1, 2, 3
+)
 SELECT
-  EXTRACT(HOUR FROM created_at AT TIME ZONE 'Europe/Madrid')::int AS hora,
-  TO_CHAR(created_at AT TIME ZONE 'Europe/Madrid', 'Day')          AS dia_semana,
-  EXTRACT(DOW FROM created_at AT TIME ZONE 'Europe/Madrid')::int   AS num_dia,
-  COUNT(*)                                                          AS total_muestras,
-  SUM(CASE WHEN NOT is_available THEN 1 ELSE 0 END)                AS muestras_ocupado,
-  ROUND(
-    SUM(CASE WHEN NOT is_available THEN 1.0 ELSE 0.0 END) / NULLIF(COUNT(*), 0) * 100,
-    1
-  )                                                                 AS pct_ocupacion,
-  COUNT(DISTINCT station_id)                                        AS estaciones_monitorizadas,
+  hora,
+  dia_semana,
+  num_dia,
+  total_muestras,
+  muestras_ocupado,
+  pct_ocupacion,
+  estaciones_monitorizadas,
   -- Rank de horas más ocupadas de la semana
   RANK() OVER (
-    PARTITION BY EXTRACT(DOW FROM created_at AT TIME ZONE 'Europe/Madrid')
-    ORDER BY
-      SUM(CASE WHEN NOT is_available THEN 1.0 ELSE 0.0 END) / NULLIF(COUNT(*), 0) DESC
+    PARTITION BY num_dia
+    ORDER BY pct_ocupacion DESC
   ) AS rank_ocupacion_dia
-FROM public.charging_logs
-WHERE created_at >= NOW() - INTERVAL '90 days'
-GROUP BY hora, dia_semana, num_dia
+FROM base
 ORDER BY num_dia, pct_ocupacion DESC;
 
 -- =============================================================
@@ -184,6 +195,7 @@ WITH stats AS (
   FROM public.charging_logs
   WHERE
     available_connectors IS NOT NULL
+    AND data_quality = 'observed'
     AND created_at >= NOW() - INTERVAL '90 days'
   GROUP BY station_id, hora
 )
@@ -197,7 +209,7 @@ SELECT
   ROUND(s.media::numeric, 2)        AS media_historica,
   ROUND(s.stddev::numeric, 2)       AS stddev_historica,
   ROUND(
-    ABS(l.available_connectors - s.media) / NULLIF(s.stddev, 0),
+    (ABS(l.available_connectors - s.media) / NULLIF(s.stddev, 0))::numeric,
     2
   )                                 AS z_score,
   CASE
@@ -211,6 +223,7 @@ JOIN stats s
   AND EXTRACT(HOUR FROM l.created_at AT TIME ZONE 'Europe/Madrid')::int = s.hora
 WHERE
   l.available_connectors IS NOT NULL
+  AND l.data_quality = 'observed'
   AND l.created_at >= NOW() - INTERVAL '7 days'
   AND s.stddev > 0
   AND ABS(l.available_connectors - s.media) > 2 * s.stddev
@@ -236,12 +249,13 @@ proxima_hora AS (
   SELECT
     station_id,
     ROUND(
-      AVG(available_connectors::float) / NULLIF(AVG(total_connectors::float), 0) * 100,
+      (AVG(available_connectors::float) / NULLIF(AVG(total_connectors::float), 0) * 100)::numeric,
       1
     ) AS pct_predicho_proxima_hora
   FROM public.charging_logs
   WHERE
     available_connectors IS NOT NULL
+    AND data_quality = 'observed'
     AND EXTRACT(HOUR FROM created_at AT TIME ZONE 'Europe/Madrid')::int
         = EXTRACT(HOUR FROM (NOW() AT TIME ZONE 'Europe/Madrid') + INTERVAL '1 hour')::int
     AND EXTRACT(DOW FROM created_at AT TIME ZONE 'Europe/Madrid')
