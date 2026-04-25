@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2'
 type Station = {
   station_id: string
   location_name: string
-  google_place_id?: string
+  google_place_id: string
   // Ajuste sobre la disponibilidad media de red cuando Google no devuelve availableCount.
   // Ejemplo: +0.15 = asumimos 15 puntos porcentuales más de disponibilidad.
   availability_bias?: number
@@ -47,10 +47,6 @@ type GooglePlace = {
   evChargeOptions?: {
     connectorAggregation?: ConnectorAggregation[]
   }
-}
-
-type GooglePlacesResponse = {
-  places?: GooglePlace[]
 }
 
 type ConnectorDetail = {
@@ -222,45 +218,22 @@ async function fetchGooglePlacesStatus(
 ): Promise<{ googleName: string | null; status: EvAvailabilityStatus; snapshot: ConnectorSnapshot }> {
   let place: GooglePlace | undefined
 
-  if (station.google_place_id) {
-    const detailsResponse = await fetch(
-      `https://places.googleapis.com/v1/places/${station.google_place_id}`,
-      {
-        method: 'GET',
-        headers: {
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': 'id,displayName,evChargeOptions',
-        },
-      },
-    )
-
-    if (detailsResponse.ok) {
-      place = (await detailsResponse.json()) as GooglePlace
-    }
-  }
-
-  if (!place) {
-    const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
-      method: 'POST',
+  const detailsResponse = await fetch(
+    `https://places.googleapis.com/v1/places/${station.google_place_id}`,
+    {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': 'places.evChargeOptions,places.displayName,places.id',
+        'X-Goog-FieldMask': 'id,displayName,evChargeOptions',
       },
-      body: JSON.stringify({
-        textQuery: `punto de carga eléctrico ${station.location_name}, Aspe, Alicante, España`,
-        includedType: 'electric_vehicle_charging_station',
-        maxResultCount: 1,
-      }),
-    })
+    },
+  )
 
-    if (!response.ok) {
-      throw new Error(`Google Places HTTP ${response.status}`)
-    }
-
-    const data = (await response.json()) as GooglePlacesResponse
-    place = data.places?.[0]
+  if (!detailsResponse.ok) {
+    throw new Error(`Google Place Details HTTP ${detailsResponse.status} (${station.station_id})`)
   }
+
+  place = (await detailsResponse.json()) as GooglePlace
 
   // Si Google no devuelve el lugar (posiblemente todos ocupados), devolvemos OCUPADO
   if (!place) {
@@ -378,6 +351,7 @@ Deno.serve(async (_req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   const googleApiKey = Deno.env.get('GOOGLE_PLACES_API_KEY')
+  const minMinutesBetweenPolls = Number(Deno.env.get('MIN_MINUTES_BETWEEN_POLLS') ?? '15')
 
   if (!supabaseUrl || !serviceRoleKey) {
     return new Response(
@@ -396,6 +370,35 @@ Deno.serve(async (_req) => {
   const supabase = createClient(supabaseUrl, serviceRoleKey)
 
   try {
+    const { data: latestSample, error: latestSampleError } = await supabase
+      .from('charging_logs')
+      .select('created_at')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (latestSampleError) {
+      throw new Error(`Error leyendo última muestra: ${latestSampleError.message}`)
+    }
+
+    if (latestSample?.created_at) {
+      const latestTs = new Date(latestSample.created_at).getTime()
+      const nowTs = Date.now()
+      const elapsedMinutes = (nowTs - latestTs) / 60000
+
+      if (elapsedMinutes < minMinutesBetweenPolls) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            inserted: 0,
+            skipped: true,
+            reason: `Ventana anti-coste activa (${elapsedMinutes.toFixed(1)} min < ${minMinutesBetweenPolls} min)`,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        )
+      }
+    }
+
     const results = await checkAspeStationsStatus(STATIONS, googleApiKey)
 
     // Solo persistimos muestras con datos dinámicos válidos.

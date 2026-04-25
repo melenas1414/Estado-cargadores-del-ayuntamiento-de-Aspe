@@ -15,10 +15,10 @@ where exists (
   select 1 from cron.job where jobname = 'monitor-cargadores-aspe'
 );
 
--- Programa la llamada cada 5 minutos
+-- Programa la llamada cada 15 minutos
 select cron.schedule(
   'monitor-cargadores-aspe',
-  '*/5 * * * *',
+  '*/15 * * * *',
   $$
   select public.invoke_monitor_cargadores();
   $$
