@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertTriangle, Gauge, Activity, Sparkles } from 'lucide-vue-next';
+import { AlertTriangle, Gauge, Activity, Sparkles, MapPinned } from 'lucide-vue-next';
 
 type Averia = {
   station_id: string;
@@ -9,6 +9,16 @@ type Averia = {
   ratioFueraServicio: number;
   rachaFueraServicioHoras: number;
   horasSinActualizarDinamico: number | null;
+};
+
+type ZonaPrioritaria = {
+  zona: string;
+  prioridad: 'critical' | 'high' | 'medium' | 'low';
+  ocupacionMediaPct: number;
+  minutosSinConectoresLibres: number;
+  estaciones: number;
+  estacionIds: string[];
+  recomendacion: string;
 };
 
 const props = defineProps<{
@@ -22,11 +32,19 @@ const props = defineProps<{
   };
   averias: Averia[];
   insights: string[];
+  zonasPrioritarias?: ZonaPrioritaria[];
 }>();
 
 function nivelClase(nivel: Averia['nivel']): string {
   if (nivel === 'critical') return 'text-rose-300 bg-rose-500/10 border-rose-500/30';
   if (nivel === 'warning') return 'text-amber-300 bg-amber-500/10 border-amber-500/30';
+  return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
+}
+
+function prioridadZonaClase(prioridad: ZonaPrioritaria['prioridad']): string {
+  if (prioridad === 'critical') return 'text-rose-300 bg-rose-500/10 border-rose-500/30';
+  if (prioridad === 'high') return 'text-amber-300 bg-amber-500/10 border-amber-500/30';
+  if (prioridad === 'medium') return 'text-cyan-300 bg-cyan-500/10 border-cyan-500/30';
   return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
 }
 
@@ -103,6 +121,34 @@ const saludTelemetria = computed(() => {
           <p class="text-[11px] text-slate-500">sin variacion en 48h</p>
         </div>
       </div>
+    </div>
+
+    <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+      <div class="mb-3 flex items-center gap-2">
+        <MapPinned class="h-4 w-4 text-fuchsia-400" />
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Zonas prioritarias para refuerzo</h3>
+      </div>
+
+      <div v-if="zonasPrioritarias?.length" class="space-y-2">
+        <div
+          v-for="z in zonasPrioritarias"
+          :key="z.zona"
+          class="rounded-xl border p-3"
+          :class="prioridadZonaClase(z.prioridad)"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-sm font-semibold">{{ z.zona }}</p>
+            <span class="rounded-full border border-current/40 px-2 py-0.5 text-[11px] uppercase tracking-wide">
+              {{ z.prioridad }}
+            </span>
+          </div>
+          <p class="mt-1 text-xs">
+            {{ z.ocupacionMediaPct }}% ocupacion media · {{ z.minutosSinConectoresLibres }} min sin libres · {{ z.estaciones }} estaciones
+          </p>
+          <p class="mt-1 text-xs text-slate-200">{{ z.recomendacion }}</p>
+        </div>
+      </div>
+      <p v-else class="text-sm text-slate-500">Sin datos suficientes para priorizar zonas.</p>
     </div>
 
     <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">

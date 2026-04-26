@@ -988,6 +988,7 @@ useHead({
               :saturacion="diagnosticoData.saturacion"
               :averias="diagnosticoData.averias ?? []"
               :insights="diagnosticoData.insights ?? []"
+              :zonas-prioritarias="diagnosticoData.zonasPrioritarias ?? []"
             />
           </section>
         </div>

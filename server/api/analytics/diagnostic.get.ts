@@ -20,6 +20,16 @@ type Row = {
   availability_updated_at: string | null;
 };
 
+type ZonaDiagnostico = {
+  zona: string;
+  prioridad: 'critical' | 'high' | 'medium' | 'low';
+  ocupacionMediaPct: number;
+  minutosSinConectoresLibres: number;
+  estaciones: number;
+  estacionIds: string[];
+  recomendacion: string;
+};
+
 function toMs(iso: string): number {
   return new Date(iso).getTime();
 }
@@ -44,6 +54,22 @@ function parseStationId(raw: unknown): string | null {
   const stationId = String(raw ?? '').trim();
   if (!stationId || stationId === 'all') return null;
   return stationId;
+}
+
+function inferZona(locationName: string): string {
+  const base = String(locationName || '')
+    .split(',')[0]
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!base) return 'Zona sin identificar';
+
+  const sinNumero = base
+    .replace(/\b\d+[a-zA-Z]*\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return sinNumero || base;
 }
 
 export default defineEventHandler(async (event) => {
@@ -87,6 +113,7 @@ export default defineEventHandler(async (event) => {
       },
       averias: [],
       insights: [],
+      zonasPrioritarias: [],
     };
   }
 
@@ -194,6 +221,7 @@ export default defineEventHandler(async (event) => {
 
   const hh: Record<string, { occ: number; total: number }> = {};
   const stationOcc: Record<string, { name: string; occ: number; total: number }> = {};
+  const zonaOcc: Record<string, { occ: number; total: number; sinLibres: number; stations: Set<string> }> = {};
 
   for (const r of rows) {
     const date = new Date(r.created_at);
@@ -205,6 +233,15 @@ export default defineEventHandler(async (event) => {
     if (!hh[key]) hh[key] = { occ: 0, total: 0 };
     hh[key].occ += occRatio;
     hh[key].total++;
+
+    const zona = inferZona(r.location_name);
+    if (!zonaOcc[zona]) {
+      zonaOcc[zona] = { occ: 0, total: 0, sinLibres: 0, stations: new Set<string>() };
+    }
+    zonaOcc[zona].occ += occRatio;
+    zonaOcc[zona].total++;
+    zonaOcc[zona].stations.add(r.station_id);
+    if (free <= 0) zonaOcc[zona].sinLibres++;
 
     if (!stationOcc[r.station_id]) {
       stationOcc[r.station_id] = { name: r.location_name, occ: 0, total: 0 };
@@ -253,9 +290,43 @@ export default defineEventHandler(async (event) => {
       : `Red estable: saturacion municipal en ${saturationPct}%.`,
   ];
 
+  const zonasPrioritarias: ZonaDiagnostico[] = Object.entries(zonaOcc)
+    .map(([zona, stats]) => {
+      const avgOcc = stats.total ? stats.occ / stats.total : 0;
+      const ocupacionMediaPct = round(avgOcc * 100);
+      const minutosSinConectoresLibres = stats.sinLibres * sampleMinutes;
+
+      let prioridad: ZonaDiagnostico['prioridad'] = 'low';
+      if (ocupacionMediaPct >= 75) prioridad = 'critical';
+      else if (ocupacionMediaPct >= 60) prioridad = 'high';
+      else if (ocupacionMediaPct >= 45) prioridad = 'medium';
+
+      const recomendacion =
+        prioridad === 'critical'
+          ? 'Refuerzo urgente: valorar 1-2 puntos nuevos en esta zona.'
+          : prioridad === 'high'
+            ? 'Refuerzo recomendado: planificar ampliacion de conectores.'
+            : prioridad === 'medium'
+              ? 'Seguimiento activo: revisar tendencia antes de ampliar.'
+              : 'Zona estable: no requiere refuerzo inmediato.';
+
+      return {
+        zona,
+        prioridad,
+        ocupacionMediaPct,
+        minutosSinConectoresLibres,
+        estaciones: stats.stations.size,
+        estacionIds: Array.from(stats.stations),
+        recomendacion,
+      };
+    })
+    .sort((a, b) => b.ocupacionMediaPct - a.ocupacionMediaPct)
+    .slice(0, 4);
+
   return {
     saturacion,
     averias,
     insights,
+    zonasPrioritarias,
   };
 });
