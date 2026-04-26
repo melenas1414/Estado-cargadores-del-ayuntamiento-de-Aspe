@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { AlertTriangle, Gauge, Activity, Sparkles, MapPinned } from 'lucide-vue-next';
 
 type Averia = {
