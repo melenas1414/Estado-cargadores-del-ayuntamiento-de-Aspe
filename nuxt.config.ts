@@ -31,7 +31,7 @@ export default defineNuxtConfig({
     public: {
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL ?? '',
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL ?? 'https://cargadores-aspe.onlineexpansions.com',
-      googleAnalyticsId: process.env.NUXT_PUBLIC_GA_ID ?? 'G-E91PCLPFL3',
+      googleAnalyticsId: process.env.NUXT_PUBLIC_GA_ID?.trim() || 'G-E91PCLPFL3',
     },
   },
 
