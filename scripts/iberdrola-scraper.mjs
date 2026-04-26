@@ -25,27 +25,27 @@ const KNOWN_STATIONS = [
   {
     station_id: 'ESIBE22E0001001',
     location_name: 'Av. Carlos Soria, 11, Aspe',
-    match_terms: ['carlos', 'soria', '11'],
+    address_tokens: ['av', 'carlos', 'soria', '11', 'aspe'],
   },
   {
     station_id: 'ESIBE22E0001002',
     location_name: 'Av. Constitución 42, Aspe',
-    match_terms: ['constitucion', '42'],
+    address_tokens: ['av', 'constitucion', '42', 'aspe'],
   },
   {
     station_id: 'ESIBE22E0001003',
     location_name: 'Av. Padre Ismael 34, Aspe',
-    match_terms: ['padre', 'ismael', '34'],
+    address_tokens: ['av', 'padre', 'ismael', '34', 'aspe'],
   },
   {
     station_id: 'ESIBE22E0001004',
     location_name: 'Av. Juan Carlos I 36, Aspe',
-    match_terms: ['juan', 'carlos', '36'],
+    address_tokens: ['av', 'juan', 'carlos', 'i', '36', 'aspe'],
   },
   {
     station_id: 'ESIBE22E0001005',
     location_name: 'Calle Orihuela 100, Aspe',
-    match_terms: ['orihuela', '100'],
+    address_tokens: ['calle', 'orihuela', '100', 'aspe'],
   },
 ]
 
@@ -68,6 +68,20 @@ function normalizeText(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+}
+
+function normalizeAddressForMatch(value) {
+  return normalizeText(value)
+    .replace(/\b\d{5}\b/g, ' ')
+    .replace(/\b(avenida|avda|av\.)\b/g, ' av ')
+    .replace(/\b(c\.|c\/)\b/g, ' calle ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function addressTokens(value) {
+  return normalizeAddressForMatch(value).split(' ').filter(Boolean)
 }
 
 function toIso(value) {
@@ -116,9 +130,9 @@ function extractCpId(item) {
 }
 
 function resolveKnownStation(addressText) {
-  const normalized = normalizeText(addressText)
+  const tokens = new Set(addressTokens(addressText))
   return KNOWN_STATIONS.find((station) =>
-    station.match_terms.every((term) => normalized.includes(term)),
+    station.address_tokens.every((term) => tokens.has(term)),
   )
 }
 
@@ -206,6 +220,9 @@ function buildRow(listItem, detailItem) {
   const address = extractAddress(detailItem) || extractAddress(listItem)
   const known = resolveKnownStation(address)
 
+  // Ignoramos estaciones fuera del listado oficial conocido para evitar ruido/duplicados.
+  if (!known) return null
+
   const cuprId = extractCuprId(detailItem) || extractCuprId(listItem)
   const cpId = extractCpId(detailItem) || extractCpId(listItem)
 
@@ -252,13 +269,11 @@ function buildRow(listItem, detailItem) {
       ? Math.max(0, Math.min(totalSafe, availableConnectors))
       : null
 
-  const stationId =
-    known?.station_id ||
-    (cuprId ? `IBERDROLA-${String(cuprId)}` : `IBERDROLA-CP-${String(cpId)}`)
+  const stationId = known.station_id
 
   return {
     station_id: stationId,
-    location_name: known?.location_name || String(address || stationId),
+    location_name: known.location_name,
     is_available: (availableSafe ?? 0) > 0,
     power_kw: powerKw ?? 22,
     available_connectors: availableSafe,
@@ -268,6 +283,31 @@ function buildRow(listItem, detailItem) {
     source: 'iberdrola-web',
     data_quality: 'observed',
   }
+}
+
+function dedupeRowsByStation(rows) {
+  const deduped = new Map()
+
+  for (const row of rows) {
+    const previous = deduped.get(row.station_id)
+    if (!previous) {
+      deduped.set(row.station_id, row)
+      continue
+    }
+
+    const prevTs = previous.availability_updated_at
+      ? new Date(previous.availability_updated_at).getTime()
+      : 0
+    const currTs = row.availability_updated_at
+      ? new Date(row.availability_updated_at).getTime()
+      : 0
+
+    if (currTs >= prevTs) {
+      deduped.set(row.station_id, row)
+    }
+  }
+
+  return Array.from(deduped.values())
 }
 
 async function insertRows(rows) {
@@ -313,6 +353,7 @@ async function main() {
       if (!detail) continue
 
       const row = buildRow(item, detail)
+      if (!row) continue
 
       // Persistimos solo cuando hay datos mínimos de conectores para evitar ruido.
       if (
@@ -332,8 +373,9 @@ async function main() {
     return
   }
 
-  await insertRows(detailRows)
-  console.log(`Filas insertadas: ${detailRows.length}`)
+  const dedupedRows = dedupeRowsByStation(detailRows)
+  await insertRows(dedupedRows)
+  console.log(`Filas insertadas: ${dedupedRows.length} (deduplicadas desde ${detailRows.length})`)
 }
 
 main().catch((error) => {
