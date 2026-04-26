@@ -290,6 +290,30 @@ const cargadorSeleccionadoDetalle = computed(() => {
   };
 });
 
+const estacionRecomendadaDetalle = computed(() => {
+  const stationId = etaData.value?.estacionRecomendada?.station_id;
+  if (!stationId) return null;
+
+  const coords = STATION_COORDS[stationId];
+  if (!coords) return null;
+
+  const locationName =
+    etaData.value?.estacionRecomendada?.location_name ||
+    STATION_STREETS[stationId] ||
+    stationId;
+
+  return {
+    stationId,
+    locationName,
+    direccion: STATION_STREETS[stationId] ?? 'Direccion no disponible',
+    lat: coords.lat,
+    lon: coords.lon,
+    googleUrl:
+      STATION_MAP_LINKS[stationId] ||
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationName)}`,
+  };
+});
+
 const activeTabTheme = computed<DashboardTabTheme>(() => TAB_THEMES[activeTab.value]);
 const activeTabLabel = computed<string>(() => {
   const found = DASHBOARD_TABS.find((tab) => tab.id === activeTab.value);
@@ -905,6 +929,7 @@ useHead({
               :eta-minutes="etaMinutes"
               :eta-data="etaData ?? null"
               :cargador-seleccionado="cargadorSeleccionadoDetalle"
+              :estacion-recomendada-detalle="estacionRecomendadaDetalle"
               @update:eta-minutes="etaMinutes = $event"
             />
           </section>

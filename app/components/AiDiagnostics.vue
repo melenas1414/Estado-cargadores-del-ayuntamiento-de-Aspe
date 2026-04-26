@@ -39,6 +39,14 @@ const props = defineProps<{
     locationName: string;
     direccion: string;
   } | null;
+  estacionRecomendadaDetalle?: {
+    stationId: string;
+    locationName: string;
+    direccion: string;
+    lat: number;
+    lon: number;
+    googleUrl: string;
+  } | null;
 }>();
 
 const emit = defineEmits<{
@@ -52,6 +60,12 @@ function nivelClase(nivel: Averia['nivel']): string {
 }
 
 const botonesEta = [5, 15, 30, 60];
+
+const mapaRecomendadoUrl = computed(() => {
+  if (!props.estacionRecomendadaDetalle) return '';
+  const { lat, lon } = props.estacionRecomendadaDetalle;
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${lon - 0.003}%2C${lat - 0.003}%2C${lon + 0.003}%2C${lat + 0.003}&layer=mapnik&marker=${lat}%2C${lon}`;
+});
 </script>
 
 <template>
@@ -120,10 +134,35 @@ const botonesEta = [5, 15, 30, 60];
           <p class="mt-1 text-sm font-semibold text-white">
             {{ etaData?.estacionRecomendada?.location_name ?? 'Sin datos' }}
           </p>
+          <p v-if="estacionRecomendadaDetalle" class="mt-0.5 text-[11px] text-slate-400">
+            {{ estacionRecomendadaDetalle.direccion }}
+          </p>
           <p class="text-[11px] text-slate-500">
             {{ etaData?.estacionRecomendada?.probabilidadLibre ?? 0 }}% probabilidad libre
           </p>
+          <a
+            v-if="estacionRecomendadaDetalle"
+            :href="estacionRecomendadaDetalle.googleUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="mt-1 inline-block text-[11px] text-cyan-300 underline-offset-2 hover:underline"
+          >
+            Abrir en Google Maps
+          </a>
         </div>
+      </div>
+
+      <div
+        v-if="estacionRecomendadaDetalle && mapaRecomendadoUrl"
+        class="mt-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60"
+      >
+        <iframe
+          class="h-48 w-full"
+          :src="mapaRecomendadoUrl"
+          title="Mapa de la estación recomendada"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+        />
       </div>
     </div>
 
