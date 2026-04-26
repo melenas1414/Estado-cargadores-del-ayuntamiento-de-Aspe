@@ -10,7 +10,7 @@
  *
  * Los llamados de análisis se reactivan cuando cambia el período seleccionado.
  */
-import { Zap, RefreshCw, MapPin, Wifi, LayoutPanelTop, Map, BrainCircuit, Activity } from 'lucide-vue-next';
+import { Zap, RefreshCw, MapPin, Wifi, LayoutPanelTop, Map as MapIcon, BrainCircuit, Activity } from 'lucide-vue-next';
 
 type Periodo = 'today' | '7d' | '30d';
 type HorizontePrediccion = 0 | 1 | 2 | 3 | 7 | 14;
@@ -27,7 +27,7 @@ type DashboardTabTheme = {
 
 const DASHBOARD_TABS: Array<{ id: DashboardTab; label: string; icon: any }> = [
   { id: 'resumen', label: 'Resumen', icon: LayoutPanelTop },
-  { id: 'mapa', label: 'Mapa', icon: Map },
+  { id: 'mapa', label: 'Mapa', icon: MapIcon },
   { id: 'inteligencia', label: 'Inteligencia', icon: BrainCircuit },
   { id: 'diagnostico', label: 'Diagnóstico', icon: Activity },
 ];

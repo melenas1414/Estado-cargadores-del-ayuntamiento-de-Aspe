@@ -20,6 +20,14 @@ const mapContainer = ref<HTMLElement | null>(null)
 
 let mapInstance: any = null
 let layerGroup: any = null
+let leafletModule: any = null
+
+async function getLeaflet() {
+  if (leafletModule) return leafletModule
+  const mod: any = await import('leaflet')
+  leafletModule = mod.default ?? mod
+  return leafletModule
+}
 
 const validPoints = computed(() =>
   props.points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon)),
@@ -37,7 +45,7 @@ function markerColor(libres: number, total: number) {
 async function initMap() {
   if (!mapContainer.value || mapInstance) return
 
-  const L = await import('leaflet')
+  const L = await getLeaflet()
   mapInstance = L.map(mapContainer.value, {
     zoomControl: true,
     scrollWheelZoom: true,
@@ -60,7 +68,7 @@ async function initMap() {
 async function renderPoints() {
   if (!mapInstance || !layerGroup) return
 
-  const L = await import('leaflet')
+  const L = await getLeaflet()
   layerGroup.clearLayers()
 
   for (const p of validPoints.value) {

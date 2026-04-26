@@ -20,24 +20,34 @@ const PERIODOS: Record<string, string> = {
   '30d': '30 days',
 };
 
-const WEEKDAY_TO_INDEX: Record<string, number> = {
-  dom: 0,
-  lun: 1,
-  mar: 2,
-  mie: 3,
-  'mié': 3,
-  jue: 4,
-  vie: 5,
-  sab: 6,
-  'sáb': 6,
-};
-
-const madridFormatter = new Intl.DateTimeFormat('es-ES', {
+const madridFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Europe/Madrid',
-  weekday: 'short',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
   hour: '2-digit',
+  hourCycle: 'h23',
   hour12: false,
 });
+
+function getMadridDayHour(fechaUtc: Date): { dia: number; hora: number } | null {
+  const parts = madridFormatter.formatToParts(fechaUtc);
+
+  const year = Number(parts.find((p) => p.type === 'year')?.value);
+  const month = Number(parts.find((p) => p.type === 'month')?.value);
+  const day = Number(parts.find((p) => p.type === 'day')?.value);
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value);
+
+  if (![year, month, day, hour].every((n) => Number.isFinite(n))) return null;
+
+  // Construimos una fecha UTC con componentes ya convertidos a hora local Madrid.
+  // Así obtenemos día de semana/hora estables sin depender de abreviaturas locales.
+  const pseudoUtc = new Date(Date.UTC(year, month - 1, day, hour, 0, 0));
+  return {
+    dia: pseudoUtc.getUTCDay(),
+    hora: hour,
+  };
+}
 
 function parseStationId(raw: unknown): string | null {
   const stationId = String(raw ?? '').trim();
@@ -57,22 +67,35 @@ export default defineEventHandler(async (event) => {
   const desde = new Date();
   desde.setDate(desde.getDate() - (periodo === 'today' ? 1 : periodo === '7d' ? 7 : 30));
 
-  let queryLogs = supabase
-    .from('charging_logs')
-    .select('created_at, is_available, station_id')
-    .gte('created_at', desde.toISOString());
+  const chunkSize = 1000;
+  const maxRows = 30000;
+  const rawData: Array<{ created_at: string; is_available: boolean; station_id: string }> = [];
 
-  if (stationId) {
-    queryLogs = queryLogs.eq('station_id', stationId);
-  }
+  for (let offset = 0; offset < maxRows; offset += chunkSize) {
+    let pageQuery = supabase
+      .from('charging_logs')
+      .select('created_at, is_available, station_id')
+      .gte('created_at', desde.toISOString())
+      .order('created_at', { ascending: true })
+      .range(offset, offset + chunkSize - 1);
 
-  const { data: rawData, error: rawError } = await queryLogs;
+    if (stationId) {
+      pageQuery = pageQuery.eq('station_id', stationId);
+    }
 
-  if (rawError) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Error al consultar heatmap: ${rawError.message}`,
-    });
+    const { data: pageData, error: pageError } = await pageQuery;
+
+    if (pageError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Error al consultar heatmap: ${pageError.message}`,
+      });
+    }
+
+    const rows = pageData ?? [];
+    rawData.push(...rows);
+
+    if (rows.length < chunkSize) break;
   }
 
   // Agrupar en memoria usando siempre hora local de Madrid.
@@ -82,15 +105,10 @@ export default defineEventHandler(async (event) => {
     const fecha = new Date(fila.created_at);
     if (Number.isNaN(fecha.getTime())) continue;
 
-    const parts = madridFormatter.formatToParts(fecha);
-    const weekdayText = (parts.find((p) => p.type === 'weekday')?.value || '')
-      .toLowerCase()
-      .replace('.', '')
-      .trim();
-    const hourText = parts.find((p) => p.type === 'hour')?.value || '';
+    const zoned = getMadridDayHour(fecha);
+    if (!zoned) continue;
 
-    const dia = WEEKDAY_TO_INDEX[weekdayText];
-    const hora = Number.parseInt(hourText, 10);
+    const { dia, hora } = zoned;
 
     if (!Number.isFinite(dia) || !Number.isFinite(hora)) continue;
     const clave = `${dia}-${hora}`;
