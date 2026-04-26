@@ -166,6 +166,7 @@ const {
 const {
   data:    prediccionData,
   pending: prediccionPending,
+  refresh: refrescarPrediccion,
 } = useFetch('/api/analytics/prediction', {
   query: computed(() => ({
     dias: diasPrediccion.value,
@@ -207,6 +208,7 @@ const {
 const {
   data:    etaData,
   pending: etaPending,
+  refresh: refrescarEta,
 } = useFetch('/api/analytics/eta', {
   query: computed(() => ({
     minutes: etaMinutes.value,
@@ -226,16 +228,42 @@ async function refrescarTodo() {
     refrescarHeatmap(),
     refrescarMetricas(),
     refrescarDiagnostico(),
+    refrescarPrediccion(),
+    refrescarEta(),
   ]);
   refrescando.value = false;
 }
 
-// ─── Refresco automático cada 60 s ────────────────────────────────────────
+// ─── Polling inteligente cada 60 s ────────────────────────────────────────
 let intervaloRefresco: ReturnType<typeof setInterval> | null = null;
+let refrescoEnCurso = false;
+
+async function pollingInteligente() {
+  if (refrescoEnCurso) return;
+  refrescoEnCurso = true;
+
+  try {
+    const ultimaAntes = cargadoresData.value?.ultimaActualizacion ?? '';
+    await refrescarCargadores();
+    const ultimaDespues = cargadoresData.value?.ultimaActualizacion ?? '';
+
+    if (ultimaDespues && ultimaDespues !== ultimaAntes) {
+      await Promise.all([
+        refrescarHeatmap(),
+        refrescarMetricas(),
+        refrescarDiagnostico(),
+        refrescarPrediccion(),
+        refrescarEta(),
+      ]);
+    }
+  } finally {
+    refrescoEnCurso = false;
+  }
+}
 
 onMounted(() => {
   intervaloRefresco = setInterval(() => {
-    refrescarCargadores();
+    pollingInteligente();
   }, 60_000);
 });
 
@@ -800,6 +828,40 @@ useHead({
                 <p class="text-xs text-slate-600">estado instantáneo</p>
               </div>
             </div>
+
+            <section aria-labelledby="probabilidad-llegada-home" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <h3 id="probabilidad-llegada-home" class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Probabilidad al llegar
+                </h3>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="m in [5, 15, 30, 60]"
+                    :key="`eta-home-${m}`"
+                    class="rounded-full border px-3 py-1 text-xs transition-colors"
+                    :class="etaMinutes === m ? 'border-cyan-500/60 bg-cyan-500/15 text-cyan-200' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-600'"
+                    @click="etaMinutes = m"
+                  >
+                    {{ m }} min
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="etaPending" class="h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+              <div v-else class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p class="text-xs text-slate-500">Red municipal libre en {{ etaMinutes }} min</p>
+                  <p class="mt-1 text-2xl font-bold text-emerald-400">{{ etaData?.probabilidadMunicipalLibre ?? 0 }}%</p>
+                  <p class="text-[11px] text-slate-500">{{ etaData?.muestras ?? 0 }} muestras historicas</p>
+                </div>
+                <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p class="text-xs text-slate-500">Mejor opcion estimada</p>
+                  <p class="mt-1 text-sm font-semibold text-white">{{ etaData?.estacionRecomendada?.location_name ?? 'Sin datos' }}</p>
+                  <p class="text-[11px] text-slate-400">{{ estacionRecomendadaDetalle?.direccion ?? 'Direccion no disponible' }}</p>
+                  <p class="text-[11px] text-slate-500">{{ etaData?.estacionRecomendada?.probabilidadLibre ?? 0 }}% probabilidad libre</p>
+                </div>
+              </div>
+            </section>
 
             <section aria-labelledby="estado-actual">
               <h3 id="estado-actual" class="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
