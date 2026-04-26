@@ -29,6 +29,7 @@ jobs:
   monitor-incremental:
     name: Scraper Iberdrola (cada 5 min)
     runs-on: ubuntu-latest
+    environment: cargadores-app-status
     if: |
       (github.event_name == 'schedule' && github.event.schedule == '*/5 * * * *') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'incremental')
@@ -78,6 +79,7 @@ jobs:
   monitor-diario:
     name: Scraper Iberdrola (barrido diario)
     runs-on: ubuntu-latest
+    environment: cargadores-app-status
     if: |
       (github.event_name == 'schedule' && github.event.schedule == '15 2 * * *') ||
       (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'full')
