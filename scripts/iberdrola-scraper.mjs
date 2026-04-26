@@ -444,6 +444,16 @@ async function main() {
   }
 
   if (!detailRows.length) {
+    console.log('[diag] No hay filas insertables. Resumen de candidatas detectadas:')
+    for (const item of list.slice(0, 20)) {
+      const address = extractAddress(item)
+      const known = resolveKnownStation(address)
+      const cuprId = extractCuprId(item)
+      const cpId = extractCpId(item)
+      console.log(
+        `  - cuprId=${cuprId || 'NA'} cpId=${cpId || 'NA'} match=${known?.station_id || 'none'} address="${address}"`,
+      )
+    }
     console.log('No hay filas válidas para insertar')
     return
   }

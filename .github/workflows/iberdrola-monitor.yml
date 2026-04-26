@@ -68,6 +68,7 @@ jobs:
         run: node scripts/iberdrola-scraper.mjs
         env:
           SCRAPER_MODE: incremental
+          SCRAPER_DEBUG_RESPONSES: '1'
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           IBERDROLA_LANGUAGE: es
@@ -118,6 +119,7 @@ jobs:
         run: node scripts/iberdrola-scraper.mjs
         env:
           SCRAPER_MODE: full
+          SCRAPER_DEBUG_RESPONSES: '1'
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           IBERDROLA_LANGUAGE: es
