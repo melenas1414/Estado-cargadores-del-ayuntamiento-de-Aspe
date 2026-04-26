@@ -20,6 +20,25 @@ const PERIODOS: Record<string, string> = {
   '30d': '30 days',
 };
 
+const WEEKDAY_TO_INDEX: Record<string, number> = {
+  dom: 0,
+  lun: 1,
+  mar: 2,
+  mie: 3,
+  'mié': 3,
+  jue: 4,
+  vie: 5,
+  sab: 6,
+  'sáb': 6,
+};
+
+const madridFormatter = new Intl.DateTimeFormat('es-ES', {
+  timeZone: 'Europe/Madrid',
+  weekday: 'short',
+  hour: '2-digit',
+  hour12: false,
+});
+
 function parseStationId(raw: unknown): string | null {
   const stationId = String(raw ?? '').trim();
   if (!stationId || stationId === 'all') return null;
@@ -34,19 +53,7 @@ export default defineEventHandler(async (event) => {
 
   const supabase = await serverSupabaseClient(event);
 
-  // Intenta primero la RPC para el caso global (sin filtro por cargador).
-  // Si no existe o falla, se usa la query directa como fallback.
-  if (!stationId) {
-    const { data, error } = await supabase.rpc('heatmap_ocupacion', {
-      intervalo_dias: intervalo,
-    });
-
-    if (!error) {
-      return { datos: data ?? [] };
-    }
-  }
-
-  // Query directa (si hay filtro por cargador o fallback de RPC)
+  // Query directa estable para todos los casos (evita discrepancias de RPC en producción).
   const desde = new Date();
   desde.setDate(desde.getDate() - (periodo === 'today' ? 1 : periodo === '7d' ? 7 : 30));
 
@@ -68,13 +75,24 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // Agrupar en memoria
+  // Agrupar en memoria usando siempre hora local de Madrid.
   const mapa: Record<string, { total: number; ocupados: number }> = {};
 
   for (const fila of rawData ?? []) {
     const fecha = new Date(fila.created_at);
-    const dia   = fecha.getDay();   // 0 = Dom
-    const hora  = fecha.getHours();
+    if (Number.isNaN(fecha.getTime())) continue;
+
+    const parts = madridFormatter.formatToParts(fecha);
+    const weekdayText = (parts.find((p) => p.type === 'weekday')?.value || '')
+      .toLowerCase()
+      .replace('.', '')
+      .trim();
+    const hourText = parts.find((p) => p.type === 'hour')?.value || '';
+
+    const dia = WEEKDAY_TO_INDEX[weekdayText];
+    const hora = Number.parseInt(hourText, 10);
+
+    if (!Number.isFinite(dia) || !Number.isFinite(hora)) continue;
     const clave = `${dia}-${hora}`;
 
     if (!mapa[clave]) mapa[clave] = { total: 0, ocupados: 0 };
