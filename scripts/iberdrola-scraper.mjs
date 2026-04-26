@@ -5,6 +5,9 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const SCRAPER_MODE = (process.env.SCRAPER_MODE || 'incremental').toLowerCase()
 const IBERDROLA_LANGUAGE = process.env.IBERDROLA_LANGUAGE || 'es'
 const SCRAPER_PROXY_URL = process.env.SCRAPER_PROXY_URL || ''
+const SCRAPER_DEBUG_RESPONSES = /^(1|true|yes|on)$/i.test(
+  process.env.SCRAPER_DEBUG_RESPONSES || '',
+)
 
 if (SCRAPER_PROXY_URL) {
   // Node fetch puede usar proxy por variables de entorno cuando está habilitado.
@@ -49,6 +52,8 @@ const KNOWN_STATIONS = [
   },
 ]
 
+const KNOWN_STATION_IDS = new Set(KNOWN_STATIONS.map((station) => station.station_id))
+
 const BBOX_INCREMENTAL = {
   latitudeMax: Number(process.env.IBERDROLA_BBOX_LAT_MAX ?? '38.365'),
   latitudeMin: Number(process.env.IBERDROLA_BBOX_LAT_MIN ?? '38.325'),
@@ -61,6 +66,12 @@ const BBOX_DAILY_FULL = {
   latitudeMin: Number(process.env.IBERDROLA_DAILY_BBOX_LAT_MIN ?? '38.12'),
   longitudeMax: Number(process.env.IBERDROLA_DAILY_BBOX_LON_MAX ?? '-0.42'),
   longitudeMin: Number(process.env.IBERDROLA_DAILY_BBOX_LON_MIN ?? '-1.02'),
+}
+
+function clipText(value, maxLength = 2200) {
+  if (!value) return ''
+  if (value.length <= maxLength) return value
+  return `${value.slice(0, maxLength)}...[truncated]`
 }
 
 function normalizeText(value) {
@@ -129,6 +140,32 @@ function extractCpId(item) {
   return firstNonEmpty(item?.cpId, item?.locationData?.cpId, item?.cuprId)
 }
 
+function extractLat(item) {
+  return numeric(
+    firstNonEmpty(
+      item?.locationData?.latitude,
+      item?.locationData?.lat,
+      item?.latitude,
+      item?.lat,
+    ),
+    null,
+  )
+}
+
+function extractLon(item) {
+  return numeric(
+    firstNonEmpty(
+      item?.locationData?.longitude,
+      item?.locationData?.lng,
+      item?.locationData?.lon,
+      item?.longitude,
+      item?.lng,
+      item?.lon,
+    ),
+    null,
+  )
+}
+
 function resolveKnownStation(addressText) {
   const tokens = new Set(addressTokens(addressText))
   return KNOWN_STATIONS.find((station) =>
@@ -157,11 +194,22 @@ async function iberdrolaPost(endpoint, body) {
     body: JSON.stringify(body),
   })
 
+  const responseText = await response.text()
+
+  if (SCRAPER_DEBUG_RESPONSES) {
+    console.log(`[debug] Iberdrola ${endpoint} request:`, JSON.stringify(body))
+    console.log(`[debug] Iberdrola ${endpoint} response:`, clipText(responseText))
+  }
+
   if (!response.ok) {
     throw new Error(`Iberdrola ${endpoint} HTTP ${response.status}`)
   }
 
-  return response.json()
+  try {
+    return JSON.parse(responseText)
+  } catch {
+    throw new Error(`Iberdrola ${endpoint} devolvio JSON invalido`)
+  }
 }
 
 async function fetchStationsList(bbox) {
@@ -340,10 +388,36 @@ async function main() {
   const list = await fetchStationsList(bbox)
   console.log(`Estaciones detectadas por Iberdrola: ${list.length}`)
 
+  if (SCRAPER_DEBUG_RESPONSES) {
+    console.log('[debug] Candidatas detectadas:')
+    for (const item of list) {
+      const address = extractAddress(item)
+      const known = resolveKnownStation(address)
+      const lat = extractLat(item)
+      const lon = extractLon(item)
+      console.log(
+        `  - cuprId=${extractCuprId(item) || 'NA'} cpId=${extractCpId(item) || 'NA'} ` +
+          `match=${known?.station_id || 'none'} lat=${lat ?? 'NA'} lon=${lon ?? 'NA'} ` +
+          `address="${address}"`,
+      )
+    }
+  }
+
   const detailRows = []
 
   for (const item of list) {
     try {
+      const listAddress = extractAddress(item)
+      const knownFromList = resolveKnownStation(listAddress)
+      if (!knownFromList) {
+        if (SCRAPER_DEBUG_RESPONSES) {
+          console.log(
+            `  - skip (no conocida) cuprId=${extractCuprId(item) || 'NA'} cpId=${extractCpId(item) || 'NA'} address="${listAddress}"`,
+          )
+        }
+        continue
+      }
+
       const cuprId = extractCuprId(item)
       const cpId = extractCpId(item)
 
@@ -354,6 +428,7 @@ async function main() {
 
       const row = buildRow(item, detail)
       if (!row) continue
+      if (!KNOWN_STATION_IDS.has(row.station_id)) continue
 
       // Persistimos solo cuando hay datos mínimos de conectores para evitar ruido.
       if (
@@ -373,7 +448,15 @@ async function main() {
     return
   }
 
-  const dedupedRows = dedupeRowsByStation(detailRows)
+  const dedupedRows = dedupeRowsByStation(detailRows).filter((row) =>
+    KNOWN_STATION_IDS.has(row.station_id),
+  )
+
+  if (!dedupedRows.length) {
+    console.log('No hay filas conocidas para insertar')
+    return
+  }
+
   await insertRows(dedupedRows)
   console.log(`Filas insertadas: ${dedupedRows.length} (deduplicadas desde ${detailRows.length})`)
 }

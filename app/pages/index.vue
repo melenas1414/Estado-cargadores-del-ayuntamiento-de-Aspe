@@ -359,6 +359,34 @@ const disponibilidadPorPunto = computed(() => cargadoresFiltrados.value.map((c: 
   };
 }));
 
+const puntosMapa = computed(() => {
+  if (cargadorSeleccionado.value !== 'all') return disponibilidadPorPunto.value;
+
+  const byStation = new Map<string, any>(
+    disponibilidadPorPunto.value.map((p: any) => [p.stationId, p]),
+  );
+
+  return Object.entries(STATION_COORDS).map(([stationId, coords]) => {
+    const current = byStation.get(stationId);
+    if (current) return current;
+
+    const fallbackName = STATION_STREETS[stationId] ?? stationId;
+
+    return {
+      stationId,
+      locationName: fallbackName,
+      libres: 0,
+      ocupados: 2,
+      total: 2,
+      lat: coords.lat,
+      lon: coords.lon,
+      googleUrl:
+        STATION_MAP_LINKS[stationId] ||
+        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fallbackName)}`,
+    };
+  });
+});
+
 function classesEstadoPunto(libres: number, total: number) {
   const totalSafe = total > 0 ? total : 1;
   const ratio = libres / totalSafe;
@@ -797,14 +825,14 @@ useHead({
 
             <div class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70">
               <ClientOnly>
-                <ChargersMap :points="disponibilidadPorPunto" />
+                <ChargersMap :points="puntosMapa" />
                 <template #fallback>
                   <div class="h-72 w-full animate-pulse bg-slate-900" />
                 </template>
               </ClientOnly>
               <div class="grid grid-cols-1 gap-2 border-t border-slate-800 p-3 sm:grid-cols-2 lg:grid-cols-3">
                 <a
-                  v-for="p in disponibilidadPorPunto"
+                  v-for="p in puntosMapa"
                   :key="`map-${p.stationId}`"
                   :href="p.googleUrl"
                   target="_blank"
