@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AlertTriangle, Gauge, Clock3, Sparkles } from 'lucide-vue-next';
+import { AlertTriangle, Gauge, Activity, Sparkles } from 'lucide-vue-next';
 
 type Averia = {
   station_id: string;
@@ -22,35 +22,6 @@ const props = defineProps<{
   };
   averias: Averia[];
   insights: string[];
-  etaMinutes: number;
-  etaData: {
-    probabilidadMunicipalLibre: number;
-    probabilidadMunicipalSaturada: number;
-    muestras: number;
-    estacionRecomendada: {
-      station_id: string;
-      location_name: string;
-      probabilidadLibre: number;
-      muestras: number;
-    } | null;
-  } | null;
-  cargadorSeleccionado?: {
-    stationId: string;
-    locationName: string;
-    direccion: string;
-  } | null;
-  estacionRecomendadaDetalle?: {
-    stationId: string;
-    locationName: string;
-    direccion: string;
-    lat: number;
-    lon: number;
-    googleUrl: string;
-  } | null;
-}>();
-
-const emit = defineEmits<{
-  (e: 'update:etaMinutes', value: number): void;
 }>();
 
 function nivelClase(nivel: Averia['nivel']): string {
@@ -59,12 +30,22 @@ function nivelClase(nivel: Averia['nivel']): string {
   return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30';
 }
 
-const botonesEta = [5, 15, 30, 60];
+const saludTelemetria = computed(() => {
+  const total = props.averias.length;
+  const criticas = props.averias.filter((a) => a.nivel === 'critical').length;
+  const warning = props.averias.filter((a) => a.nivel === 'warning').length;
+  const desactualizadas = props.averias.filter((a) => (a.horasSinActualizarDinamico ?? 0) >= 6).length;
+  const patronesPlanos = props.averias.filter((a) =>
+    a.razones.some((r) => r.toLowerCase().includes('patron plano')),
+  ).length;
 
-const mapaRecomendadoUrl = computed(() => {
-  if (!props.estacionRecomendadaDetalle) return '';
-  const { lat, lon } = props.estacionRecomendadaDetalle;
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${lon - 0.003}%2C${lat - 0.003}%2C${lon + 0.003}%2C${lat + 0.003}&layer=mapnik&marker=${lat}%2C${lon}`;
+  return {
+    total,
+    criticas,
+    warning,
+    desactualizadas,
+    patronesPlanos,
+  };
 });
 </script>
 
@@ -97,72 +78,30 @@ const mapaRecomendadoUrl = computed(() => {
 
     <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
       <div class="mb-3 flex items-center gap-2">
-        <Clock3 class="h-4 w-4 text-cyan-400" />
-        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Probabilidad al llegar</h3>
+        <Activity class="h-4 w-4 text-cyan-400" />
+        <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Salud de telemetria</h3>
       </div>
-      <div class="mb-3 flex flex-wrap gap-2">
-        <button
-          v-for="m in botonesEta"
-          :key="m"
-          class="rounded-full border px-3 py-1 text-xs transition-colors"
-          :class="etaMinutes === m ? 'border-cyan-500/60 bg-cyan-500/15 text-cyan-200' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-600'"
-          @click="emit('update:etaMinutes', m)"
-        >
-          {{ m }} min
-        </button>
-      </div>
-
-      <div
-        v-if="cargadorSeleccionado"
-        class="mb-3 rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3"
-      >
-        <p class="text-xs text-cyan-200">Cargador analizado</p>
-        <p class="mt-0.5 text-sm font-semibold text-white">
-          {{ cargadorSeleccionado.stationId }} · {{ cargadorSeleccionado.locationName }}
-        </p>
-        <p class="text-[11px] text-slate-300">{{ cargadorSeleccionado.direccion }}</p>
-      </div>
-
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-          <p class="text-xs text-slate-500">Red municipal libre en {{ etaMinutes }} min</p>
-          <p class="mt-1 text-2xl font-bold text-emerald-400">{{ etaData?.probabilidadMunicipalLibre ?? 0 }}%</p>
-          <p class="text-[11px] text-slate-500">{{ etaData?.muestras ?? 0 }} muestras historicas</p>
+          <p class="text-xs text-slate-500">Estaciones criticas</p>
+          <p class="mt-1 text-2xl font-bold text-rose-400">{{ saludTelemetria.criticas }}</p>
+          <p class="text-[11px] text-slate-500">de {{ saludTelemetria.total }} estaciones</p>
         </div>
         <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-          <p class="text-xs text-slate-500">Mejor opcion estimada</p>
-          <p class="mt-1 text-sm font-semibold text-white">
-            {{ etaData?.estacionRecomendada?.location_name ?? 'Sin datos' }}
-          </p>
-          <p v-if="estacionRecomendadaDetalle" class="mt-0.5 text-[11px] text-slate-400">
-            {{ estacionRecomendadaDetalle.direccion }}
-          </p>
-          <p class="text-[11px] text-slate-500">
-            {{ etaData?.estacionRecomendada?.probabilidadLibre ?? 0 }}% probabilidad libre
-          </p>
-          <a
-            v-if="estacionRecomendadaDetalle"
-            :href="estacionRecomendadaDetalle.googleUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="mt-1 inline-block text-[11px] text-cyan-300 underline-offset-2 hover:underline"
-          >
-            Abrir en Google Maps
-          </a>
+          <p class="text-xs text-slate-500">Alertas warning</p>
+          <p class="mt-1 text-2xl font-bold text-amber-400">{{ saludTelemetria.warning }}</p>
+          <p class="text-[11px] text-slate-500">incidencias moderadas</p>
         </div>
-      </div>
-
-      <div
-        v-if="estacionRecomendadaDetalle && mapaRecomendadoUrl"
-        class="mt-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60"
-      >
-        <iframe
-          class="h-48 w-full"
-          :src="mapaRecomendadoUrl"
-          title="Mapa de la estación recomendada"
-          loading="lazy"
-          referrerpolicy="no-referrer-when-downgrade"
-        />
+        <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+          <p class="text-xs text-slate-500">Datos desactualizados</p>
+          <p class="mt-1 text-2xl font-bold text-cyan-300">{{ saludTelemetria.desactualizadas }}</p>
+          <p class="text-[11px] text-slate-500">&gt;= 6h sin cambio dinamico</p>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+          <p class="text-xs text-slate-500">Patrones planos</p>
+          <p class="mt-1 text-2xl font-bold text-fuchsia-300">{{ saludTelemetria.patronesPlanos }}</p>
+          <p class="text-[11px] text-slate-500">sin variacion en 48h</p>
+        </div>
       </div>
     </div>
 

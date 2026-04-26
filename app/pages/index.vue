@@ -988,11 +988,6 @@ useHead({
               :saturacion="diagnosticoData.saturacion"
               :averias="diagnosticoData.averias ?? []"
               :insights="diagnosticoData.insights ?? []"
-              :eta-minutes="etaMinutes"
-              :eta-data="etaData ?? null"
-              :cargador-seleccionado="cargadorSeleccionadoDetalle"
-              :estacion-recomendada-detalle="estacionRecomendadaDetalle"
-              @update:eta-minutes="etaMinutes = $event"
             />
           </section>
         </div>
