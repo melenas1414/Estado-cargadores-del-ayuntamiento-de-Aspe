@@ -15,6 +15,7 @@ interface Props {
   isAvailable:  boolean;
   powerKw:      number;
   updatedAt:    string;
+  providerUpdatedAt?: string | null;
   availableConnectors?: number | null;
   totalConnectors?: number | null;
   connectorType?: string | null;
@@ -27,6 +28,15 @@ const props = defineProps<Props>();
 const horaActualizacion = computed(() => {
   if (!props.updatedAt) return '—';
   return new Date(props.updatedAt).toLocaleTimeString('es-ES', {
+    hour:   '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Madrid',
+  });
+});
+
+const horaEstadoProveedor = computed(() => {
+  if (!props.providerUpdatedAt) return '—';
+  return new Date(props.providerUpdatedAt).toLocaleTimeString('es-ES', {
     hour:   '2-digit',
     minute: '2-digit',
     timeZone: 'Europe/Madrid',
@@ -193,11 +203,14 @@ const potenciaTexto = computed(() => {
         {{ conectoresTexto }}
       </p>
 
-      <div class="flex items-center justify-end pt-0.5">
-        <span class="flex items-center gap-1">
+      <div class="pt-0.5 text-[11px] text-slate-500">
+        <div class="flex items-center justify-end gap-1">
           <Clock class="h-3 w-3" />
-          Act. {{ horaActualizacion }}
-        </span>
+          <span>Muestra {{ horaActualizacion }}</span>
+        </div>
+        <div class="mt-1 text-right text-slate-600">
+          Proveedor {{ horaEstadoProveedor }}
+        </div>
       </div>
     </div>
   </div>

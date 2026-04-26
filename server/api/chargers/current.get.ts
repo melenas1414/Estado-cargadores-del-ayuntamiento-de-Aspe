@@ -21,16 +21,27 @@ export default defineEventHandler(async (event) => {
 
   const cargadores = data ?? [];
 
-  // Usar el timestamp más reciente de los datos, no el tiempo de servidor
+  // La cabecera debe reflejar cuándo se guardó la última muestra en nuestro sistema.
+  // availability_updated_at puede venir retrasado desde el proveedor.
   const ultimaActualizacion = cargadores.length
     ? cargadores.reduce((max: string, c: any) => {
-        const current = c.availability_updated_at ?? c.created_at;
+        const current = c.created_at;
         return current > max ? current : max;
-      }, cargadores[0].availability_updated_at ?? cargadores[0].created_at)
+      }, cargadores[0].created_at)
     : new Date().toISOString();
+
+  const ultimoEstadoProveedor = cargadores.length
+    ? cargadores.reduce((max: string | null, c: any) => {
+        const current = c.availability_updated_at;
+        if (!current) return max;
+        if (!max) return current;
+        return current > max ? current : max;
+      }, null)
+    : null;
 
   return {
     cargadores,
     ultimaActualizacion,
+    ultimoEstadoProveedor,
   };
 });

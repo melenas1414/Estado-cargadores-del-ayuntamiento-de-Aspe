@@ -47,9 +47,47 @@ const PATH_TO_TAB: Record<string, DashboardTab> = {
   '/diagnostico': 'diagnostico',
 };
 
-definePageMeta({
-  alias: ['/mapa', '/inteligencia', '/diagnostico'],
-});
+const TAB_SEO: Record<DashboardTab, {
+  title: string;
+  description: string;
+  keywords: string;
+  ogTitle: string;
+  ogDescription: string;
+  breadcrumbName: string;
+}> = {
+  resumen: {
+    title: 'Estado de Cargadores en Aspe en Tiempo Real | Disponibilidad Actual',
+    description: 'Consulta el estado en tiempo real de los cargadores de coche eléctrico en Aspe: puntos libres, ocupados, conectores disponibles y última actualización.',
+    keywords: 'cargadores coche aspe, cargadores electricos aspe, estado cargadores aspe, cargador coche electrico aspe, recarga aspe',
+    ogTitle: 'Cargadores en Aspe | Estado en Tiempo Real',
+    ogDescription: 'Disponibilidad actual de cargadores de coche en Aspe con actualización periódica.',
+    breadcrumbName: 'Resumen',
+  },
+  mapa: {
+    title: 'Mapa de Cargadores de Coche en Aspe | Ubicaciones y Disponibilidad',
+    description: 'Explora el mapa de cargadores de coche eléctrico en Aspe, Alicante. Consulta ubicación por punto y disponibilidad de conectores.',
+    keywords: 'mapa cargadores aspe, donde cargar coche electrico aspe, puntos de recarga aspe mapa, ubicacion cargadores aspe',
+    ogTitle: 'Mapa de Cargadores en Aspe',
+    ogDescription: 'Ubicaciones de cargadores de coche en Aspe con estado de disponibilidad.',
+    breadcrumbName: 'Mapa',
+  },
+  inteligencia: {
+    title: 'Predicción de Carga en Aspe | Mejores Horas para Recargar',
+    description: 'Consulta analítica y predicción para cargar tu coche eléctrico en Aspe: heatmap, franjas recomendadas y tendencias de ocupación.',
+    keywords: 'mejor hora cargar coche electrico aspe, prediccion cargadores aspe, analitica recarga aspe, ocupacion cargadores aspe',
+    ogTitle: 'Predicción de Carga en Aspe',
+    ogDescription: 'Análisis histórico y predicción de disponibilidad de cargadores en Aspe.',
+    breadcrumbName: 'Inteligencia',
+  },
+  diagnostico: {
+    title: 'Diagnóstico de Red de Cargadores en Aspe | Saturación y Prioridades',
+    description: 'Diagnóstico avanzado de la red de recarga de Aspe: saturación, incidencias y zonas prioritarias para refuerzo de puntos.',
+    keywords: 'diagnostico cargadores aspe, saturacion cargadores aspe, incidencias recarga aspe, zonas prioritarias cargadores aspe',
+    ogTitle: 'Diagnóstico de Cargadores en Aspe',
+    ogDescription: 'Estado de salud de la red de cargadores y prioridades de mejora en Aspe.',
+    breadcrumbName: 'Diagnóstico',
+  },
+};
 
 const TAB_THEMES: Record<DashboardTab, DashboardTabTheme> = {
   resumen: {
@@ -107,7 +145,6 @@ const periodo = ref<Periodo>('7d');
 const diasPrediccion = ref<HorizontePrediccion>(0);
 const cargadorSeleccionado = ref<FiltroCargador>('all');
 const route = useRoute();
-const router = useRouter();
 
 function normalizarPath(path: string): string {
   const clean = path.replace(/\/+$/, '');
@@ -128,14 +165,6 @@ watch(
     if (tab !== activeTab.value) activeTab.value = tab;
   },
 );
-
-async function goToTab(tabId: DashboardTab) {
-  activeTab.value = tabId;
-  const targetPath = TAB_PATHS[tabId];
-  if (normalizarPath(route.path) !== targetPath) {
-    await router.push(targetPath);
-  }
-}
 
 // ─── Datos en tiempo real (cargadores) ──────────────────────────────────────
 const {
@@ -279,6 +308,7 @@ const cargadoresFiltrados = computed(() =>
     : cargadores.value.filter((c: any) => c.station_id === cargadorSeleccionado.value)
 );
 const ultimaActualizacion = computed(() => cargadoresData.value?.ultimaActualizacion ?? '');
+const ultimoEstadoProveedor = computed(() => cargadoresData.value?.ultimoEstadoProveedor ?? '');
 const opcionesCargador = computed<OpcionCargador[]>(() => {
   const unicos = new Set<string>();
   return cargadores.value
@@ -380,6 +410,16 @@ const horaLegible = computed(() => {
   });
 });
 
+const horaLegibleEstado = computed(() => {
+  if (!ultimoEstadoProveedor.value) return '—';
+  return new Date(ultimoEstadoProveedor.value).toLocaleTimeString('es-ES', {
+    hour:   '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZone: 'Europe/Madrid',
+  });
+});
+
 // Supertítulo de estado global
 const estadoGlobal = computed(() => {
   if (!cargadoresFiltrados.value.length) return null;
@@ -464,10 +504,12 @@ function classesEstadoPunto(libres: number, total: number) {
 }
 
 const runtimeConfig = useRuntimeConfig();
-const requestUrl = useRequestURL();
 const siteUrl = (runtimeConfig.public.siteUrl || 'https://cargadores-aspe.onlineexpansions.com').replace(/\/+$/, '');
-const canonicalPath = requestUrl.pathname || '/';
-const canonicalUrl = `${siteUrl}${canonicalPath}`;
+const tabActual = computed<DashboardTab>(() => tabDesdePath(route.path));
+const seoActual = computed(() => TAB_SEO[tabActual.value]);
+const canonicalPath = computed(() => TAB_PATHS[tabActual.value]);
+const canonicalUrl = computed(() => `${siteUrl}${canonicalPath.value}`);
+const rootUrl = `${siteUrl}/`;
 
 // ─── SEO estructurado ────────────────────────────────────────────────────────
 // Datos de estaciones para JSON-LD (LocalBusiness por punto de carga)
@@ -479,28 +521,27 @@ const SEO_STATIONS = [
   { id: 'ESIBE22E0001005', name: 'Cargador Eléctrico Aspe · Calle Orihuela',    street: 'Calle Orihuela, 100',      lat: 38.3385331, lon: -0.7766776 },
 ];
 
-useSeoMeta({
-  title: 'Cargadores Eléctricos en Aspe (Alicante) · Disponibilidad en Tiempo Real + Mapa',
-  description:
-    'Consulta en tiempo real el estado de los 5 puntos de carga eléctrica del Ayuntamiento de Aspe (Alicante). Tipo 2 · 11 kW · Iberdrola. Mapa, disponibilidad libre/ocupado y predicción de mejor hora para cargar tu coche eléctrico.',
-  keywords:
-    'cargadores electricos aspe, puntos de recarga aspe, cargador tipo 2 aspe, cargar coche electrico aspe alicante, iberdrola aspe, punto recarga ayuntamiento aspe, cargador ev aspe, estado cargadores aspe, mapa cargadores aspe, recarga vehiculo electrico aspe, aspe carga electrica, cargadores publicos aspe, cargador 11kw aspe, donde cargar coche electrico aspe',
-  ogTitle: 'Cargadores Eléctricos Aspe · Estado en Tiempo Real',
-  ogDescription:
-    '5 puntos de carga pública en Aspe (Alicante). Tipo 2 · 11 kW. Consulta disponibilidad en tiempo real, mapa y predicción de mejor hora para recargar tu vehículo eléctrico.',
+useSeoMeta(() => ({
+  title: seoActual.value.title,
+  description: seoActual.value.description,
+  keywords: seoActual.value.keywords,
+  ogTitle: seoActual.value.ogTitle,
+  ogDescription: seoActual.value.ogDescription,
   ogType: 'website',
   ogLocale: 'es_ES',
-  ogUrl: canonicalUrl,
+  ogUrl: canonicalUrl.value,
   robots: 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
   twitterCard: 'summary_large_image',
-  twitterTitle: 'Cargadores Eléctricos en Aspe · Tiempo Real',
-  twitterDescription: '5 puntos de recarga pública en Aspe, Alicante. Tipo 2 · 11 kW · Mapa + IA.',
-});
+  twitterTitle: seoActual.value.ogTitle,
+  twitterDescription: seoActual.value.ogDescription,
+}));
 
-useHead({
+useHead(() => ({
   htmlAttrs: { lang: 'es' },
   link: [
-    { rel: 'canonical', href: canonicalUrl },
+    { rel: 'canonical', href: canonicalUrl.value },
+    { rel: 'alternate', hreflang: 'es', href: rootUrl },
+    { rel: 'alternate', hreflang: 'x-default', href: rootUrl },
   ],
   meta: [
     // Geo meta tags para SEO local
@@ -518,9 +559,9 @@ useHead({
         '@type': 'WebSite',
         name: 'Estado de Cargadores de Aspe',
         alternateName: 'Cargadores Aspe',
-        url: canonicalUrl,
+        url: rootUrl,
         description:
-          'Monitor en tiempo real de disponibilidad de cargadores eléctricos públicos en Aspe (Alicante). Fuente: Google Places · Actualización cada 15 min.',
+          'Monitor de disponibilidad de cargadores eléctricos públicos en Aspe (Alicante) con vista de estado, mapa, analítica y diagnóstico.',
         inLanguage: 'es-ES',
         creator:   { '@type': 'Organization', name: 'OnlineExpansions', url: 'https://onlineexpansions.com' },
         publisher: { '@type': 'Organization', name: 'OnlineExpansions', url: 'https://onlineexpansions.com' },
@@ -547,10 +588,10 @@ useHead({
           position: i + 1,
           item: {
             '@type': 'LocalBusiness',
-            '@id': `${canonicalUrl}#${s.id}`,
+            '@id': `${rootUrl}#${s.id}`,
             name: s.name,
             description: `Punto de carga eléctrica pública en Aspe (Alicante). Conector Tipo 2 · 11 kW AC. ID REEV: ${s.id}. Gestionado por Iberdrola.`,
-            url: canonicalUrl,
+            url: rootUrl,
             address: {
               '@type': 'PostalAddress',
               streetAddress:   s.street,
@@ -639,7 +680,7 @@ useHead({
             name: '¿Cómo saber si los cargadores de Aspe están libres ahora mismo?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'Puedes consultar el estado en tiempo real directamente en esta página. Los datos se actualizan cada 15 minutos a través de la API de Google Places. Verás el estado libre u ocupado de cada uno de los 5 puntos de recarga de Aspe.',
+              text: 'Puedes consultar el estado en tiempo real directamente en esta página. Verás el estado libre u ocupado de cada uno de los 5 puntos de recarga de Aspe con actualización periódica.',
             },
           },
           {
@@ -655,7 +696,7 @@ useHead({
             name: '¿Con qué frecuencia se actualiza el estado de los cargadores de Aspe?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'El estado de los cargadores de Aspe se actualiza automáticamente cada 15 minutos mediante Supabase Edge Functions y la API oficial de Google Places, ofreciendo información de disponibilidad casi en tiempo real.',
+              text: 'El estado de los cargadores de Aspe se actualiza de forma periódica para ofrecer información de disponibilidad reciente y útil para planificar la recarga.',
             },
           },
         ],
@@ -669,13 +710,13 @@ useHead({
         '@context': 'https://schema.org',
         '@type': 'BreadcrumbList',
         itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Inicio',                          item: canonicalUrl },
-          { '@type': 'ListItem', position: 2, name: 'Cargadores Eléctricos en Aspe',   item: canonicalUrl },
+          { '@type': 'ListItem', position: 1, name: 'Inicio', item: rootUrl },
+          { '@type': 'ListItem', position: 2, name: seoActual.value.breadcrumbName, item: canonicalUrl.value },
         ],
       }),
     },
   ],
-});
+}));
 </script>
 
 <template>
@@ -708,8 +749,9 @@ useHead({
         <!-- Última actualización + botón de refresco -->
         <div class="flex items-center gap-3">
           <div class="text-right">
-            <p class="text-xs text-slate-500">Última actualización</p>
+            <p class="text-xs text-slate-500">Muestra</p>
             <p class="text-sm font-medium text-slate-300">{{ horaLegible }}</p>
+            <p class="text-[11px] text-slate-500">Proveedor: {{ horaLegibleEstado }}</p>
           </div>
           <button
             class="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900
@@ -734,16 +776,16 @@ useHead({
         aria-label="Secciones del dashboard"
       >
         <div class="flex snap-x gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible md:pb-0">
-          <button
+          <NuxtLink
             v-for="tab in DASHBOARD_TABS"
             :key="tab.id"
+            :to="TAB_PATHS[tab.id]"
             class="min-w-[150px] snap-start flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all md:min-w-0"
             :class="tabButtonClass(tab.id)"
-            @click="goToTab(tab.id)"
           >
             <component :is="tab.icon" class="h-4 w-4" />
             {{ tab.label }}
-          </button>
+          </NuxtLink>
         </div>
       </nav>
 
@@ -848,17 +890,50 @@ useHead({
               </div>
 
               <div v-if="etaPending" class="h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
-              <div v-else class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                  <p class="text-xs text-slate-500">Red municipal libre en {{ etaMinutes }} min</p>
-                  <p class="mt-1 text-2xl font-bold text-emerald-400">{{ etaData?.probabilidadMunicipalLibre ?? 0 }}%</p>
-                  <p class="text-[11px] text-slate-500">{{ etaData?.muestras ?? 0 }} muestras historicas</p>
+              <div v-else class="space-y-3">
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                    <p class="text-xs text-slate-500">Red municipal libre en {{ etaMinutes }} min</p>
+                    <p class="mt-1 text-2xl font-bold" :class="(etaData?.probabilidadMunicipalLibre ?? 0) > 0 ? 'text-emerald-400' : 'text-red-400'">{{ etaData?.probabilidadMunicipalLibre ?? 0 }}%</p>
+                    <p class="text-[11px] text-slate-500">{{ etaData?.muestras ?? 0 }} muestras historicas</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                    <template v-if="(etaData?.probabilidadMunicipalLibre ?? 0) > 0">
+                      <p class="text-xs text-slate-500">Mejor opcion estimada</p>
+                      <p class="mt-1 text-sm font-semibold text-white">{{ etaData?.estacionRecomendada?.location_name ?? 'Sin datos' }}</p>
+                      <p class="text-[11px] text-slate-400">{{ estacionRecomendadaDetalle?.direccion ?? 'Direccion no disponible' }}</p>
+                      <p class="text-[11px] text-slate-500">{{ etaData?.estacionRecomendada?.probabilidadLibre ?? 0 }}% probabilidad libre</p>
+                    </template>
+                    <template v-else>
+                      <p class="text-xs text-slate-500">Previsión</p>
+                      <p class="mt-1 text-sm font-semibold text-red-400">Sin posibilidad en {{ etaMinutes }} min</p>
+                      <p class="mt-1 text-[11px] text-slate-400">
+                        Según el histórico, es muy poco probable que haya un cargador libre en los próximos {{ etaMinutes }} minutos.
+                      </p>
+                    </template>
+                  </div>
                 </div>
-                <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-                  <p class="text-xs text-slate-500">Mejor opcion estimada</p>
-                  <p class="mt-1 text-sm font-semibold text-white">{{ etaData?.estacionRecomendada?.location_name ?? 'Sin datos' }}</p>
-                  <p class="text-[11px] text-slate-400">{{ estacionRecomendadaDetalle?.direccion ?? 'Direccion no disponible' }}</p>
-                  <p class="text-[11px] text-slate-500">{{ etaData?.estacionRecomendada?.probabilidadLibre ?? 0 }}% probabilidad libre</p>
+
+                <!-- Mapa de la estación recomendada (siempre visible cuando hay datos) -->
+                <div v-if="estacionRecomendadaDetalle && (etaData?.probabilidadMunicipalLibre ?? 0) > 0" class="overflow-hidden rounded-xl border border-slate-800">
+                  <iframe
+                    :src="`https://www.openstreetmap.org/export/embed.html?bbox=${estacionRecomendadaDetalle.lon - 0.004},${estacionRecomendadaDetalle.lat - 0.003},${estacionRecomendadaDetalle.lon + 0.004},${estacionRecomendadaDetalle.lat + 0.003}&layer=mapnik&marker=${estacionRecomendadaDetalle.lat},${estacionRecomendadaDetalle.lon}`"
+                    class="h-44 w-full border-0"
+                    loading="lazy"
+                    :title="`Mapa de ${estacionRecomendadaDetalle.locationName}`"
+                    sandbox="allow-scripts allow-same-origin"
+                  />
+                  <div class="flex items-center justify-between bg-slate-950/80 px-3 py-2">
+                    <span class="text-[11px] text-slate-400">{{ estacionRecomendadaDetalle.locationName }}</span>
+                    <a
+                      :href="estacionRecomendadaDetalle.googleUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="text-[11px] text-cyan-400 hover:text-cyan-300"
+                    >
+                      Abrir en Maps ↗
+                    </a>
+                  </div>
                 </div>
               </div>
             </section>
@@ -890,7 +965,8 @@ useHead({
                   :location-name="c.location_name"
                   :is-available="c.is_available"
                   :power-kw="c.power_kw"
-                  :updated-at="c.availability_updated_at || c.created_at"
+                  :updated-at="c.created_at"
+                  :provider-updated-at="c.availability_updated_at"
                   :available-connectors="libresPorCargador(c)"
                   :total-connectors="c.total_connectors || 2"
                   :connector-type="c.connector_type"
@@ -996,7 +1072,7 @@ useHead({
 
       <!-- ════════ FOOTER ════════ -->
       <footer class="border-t border-slate-800 pt-4 text-center text-xs text-slate-600">
-        Datos actualizados cada 15 minutos por Supabase Cron + Edge Functions · Fuente principal: OpenChargeMap ·
+        Panel municipal de disponibilidad de carga para Aspe · Información actualizada periódicamente ·
         Desarrollado por
         <a
           href="https://onlineexpansions.com"
