@@ -5,8 +5,8 @@ Monitor en tiempo real + analítica histórica para los **5 cargadores Iberdrola
 | Feature | Detalle |
 |---|---|
 | **Stack** | Nuxt 4, Supabase (PostgreSQL), Tailwind CSS, Chart.js |
-| **Automatización** | Supabase Edge Functions + `pg_cron` cada 15 minutos |
-| **Despliegue** | GitHub Actions -> Vercel (frontend) + Supabase (Edge Function) |
+| **Automatización** | GitHub Actions + scraper Iberdrola cada 5 minutos |
+| **Despliegue** | GitHub Actions -> Vercel (frontend) |
 | **Visualización** | Heatmap semanal, predicción horaria, KPIs de uso |
 
 ---
@@ -22,7 +22,7 @@ Monitor en tiempo real + analítica histórica para los **5 cargadores Iberdrola
 | 5 | Calle Orihuela 100 | `ESIBE22E0001005` |
 
 > **Nota:** Los `station_id` son identificadores de ejemplo.
-> Actualízalos en `services/scraper.mjs` con los IDs reales de la red Iberdrola
+> Actualízalos en `scripts/iberdrola-scraper.mjs` con los IDs reales de la red Iberdrola
 > (visibles en la app *Iberdrola Smart Charging* o en la propia estación física).
 
 ---
@@ -38,48 +38,49 @@ Monitor en tiempo real + analítica histórica para los **5 cargadores Iberdrola
 
 ---
 
-## 🔌 2. Automatización en Supabase (Edge Functions + pg_cron)
+## 🔌 2. Automatización con GitHub Actions (Iberdrola -> Supabase)
 
-La captura se ejecuta en Supabase cada 15 minutos sin depender de GitHub Actions.
+La captura se ejecuta en GitHub Actions y guarda en Supabase por REST:
 
-### 2.1 Desplegar la Edge Function
+- Cada 5 minutos: actualización incremental
+- Diario (02:15 UTC): barrido completo de cargadores
 
-```bash
-supabase functions deploy monitor-cargadores --project-ref <PROJECT_REF>
-```
+Script principal:
+- `scripts/iberdrola-scraper.mjs`
 
-Archivo de la función:
-- `supabase/functions/monitor-cargadores/index.ts`
+Workflow:
+- `.github/workflows/iberdrola-monitor.yml`
 
-### 2.2 Configurar secretos de la función
+### 2.1 Secretos necesarios en GitHub
 
-```bash
-supabase secrets set OCM_API_KEY=<TU_OCM_API_KEY> --project-ref <PROJECT_REF>
-```
+Configura estos secretos en **Settings -> Secrets and variables -> Actions**:
 
-> `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` los inyecta Supabase automáticamente.
+| Secreto | Uso |
+|---|---|
+| `SUPABASE_URL` | URL del proyecto Supabase |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key para insertar en `charging_logs` |
+| `SCRAPER_PROXY_URL` (opcional) | Proxy HTTP/HTTPS para el scraper (ej. residencial) |
 
-### 2.3 Programar ejecución cada 15 minutos
+### 2.2 Desactivar cron legado de Supabase
 
-1. Abre **SQL Editor** en Supabase.
-2. Ejecuta `supabase/cron.sql` reemplazando:
-    - `<PROJECT_REF>`
-    - `<SERVICE_ROLE_KEY>`
+Ejecuta una vez en SQL Editor:
 
-### 2.4 Test manual de la función
+- `supabase/cron.sql`
 
-```bash
-curl -X POST "https://<PROJECT_REF>.supabase.co/functions/v1/monitor-cargadores" \
-   -H "Authorization: Bearer <SERVICE_ROLE_KEY>" \
-   -H "Content-Type: application/json"
-```
+Con esto se elimina el job `monitor-cargadores-aspe` y se evita ejecución duplicada.
+
+### 2.3 Ejecución manual del scraper
+
+Puedes lanzar el workflow manualmente desde GitHub Actions:
+
+- Modo `incremental`
+- Modo `full`
 
 ## 🚀 3. Despliegue automático con GitHub Actions
 
 El workflow [`deploy.yml`](./.github/workflows/deploy.yml) publica automáticamente:
 
 - El frontend en Vercel cuando cambian `app/`, `server/` o la configuración Nuxt/Vercel.
-- La Edge Function `monitor-cargadores` cuando cambia `supabase/functions/`.
 
 ### Secretos necesarios en GitHub
 
@@ -90,9 +91,6 @@ Configura estos secretos en **Settings -> Secrets and variables -> Actions**:
 | `VERCEL_TOKEN` | Autenticación con Vercel CLI |
 | `VERCEL_ORG_ID` | ID del equipo/organización en Vercel |
 | `VERCEL_PROJECT_ID` | ID del proyecto en Vercel |
-| `SUPABASE_ACCESS_TOKEN` | Token personal para desplegar con Supabase CLI |
-| `SUPABASE_PROJECT_REF` | Ref del proyecto Supabase |
-| `OCM_API_KEY` | Clave de OpenChargeMap para sincronizar el secreto de la función |
 
 ### Variables de entorno en Vercel
 
@@ -146,18 +144,15 @@ El dashboard estará disponible en `http://localhost:3000`.
 │           ├── heatmap.get.ts           # Datos del heatmap semanal
 │           ├── prediction.get.ts        # Predicción horaria
 │           └── metrics.get.ts           # Métricas de uso
-├── services/
-│   ├── scraper.mjs                      # Script de monitorización local (opcional)
-│   └── package.json                     # Dependencias del scraper local
+├── scripts/
+│   └── iberdrola-scraper.mjs            # Scraper Iberdrola ejecutado por GitHub Actions
 ├── supabase/
 │   └── schema.sql                       # DDL de la tabla charging_logs
-│   ├── cron.sql                         # Programación pg_cron para la Edge Function
-│   └── functions/
-│       └── monitor-cargadores/
-│           └── index.ts                # Función serverless de captura cada 15 min
+│   ├── cron.sql                         # Desactiva el cron legado de Supabase
 ├── .github/
 │   └── workflows/
-│       └── monitor.yml                  # Alternativa opcional con GitHub Actions
+│       ├── deploy.yml                   # Despliegue frontend en Vercel
+│       └── iberdrola-monitor.yml        # Captura Iberdrola cada 5 min + barrido diario
 ├── nuxt.config.ts                       # Configuración de Nuxt 4
 ├── tailwind.config.ts                   # Tema oscuro (slate-950)
 ├── vercel.json                          # Configuración de Vercel
@@ -196,7 +191,7 @@ El dashboard estará disponible en `http://localhost:3000`.
 ## 🔒 Seguridad
 
 - Las claves `service_role` de Supabase **nunca** se exponen al cliente.
-- Las variables sensibles se gestionan como **Supabase Secrets** y **Variables de Entorno de Vercel**.
+- Las variables sensibles se gestionan como **GitHub Secrets** y **Variables de Entorno de Vercel**.
 - RLS de Supabase habilitado: lectura pública, escritura sólo para el service role.
 
 ---

@@ -1,0 +1,125 @@
+name: Iberdrola Monitor
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+    - cron: '15 2 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Modo de ejecucion del scraper'
+        required: true
+        default: 'incremental'
+        type: choice
+        options:
+          - incremental
+          - full
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iberdrola-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor-incremental:
+    name: Scraper Iberdrola (cada 5 min)
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '*/5 * * * *') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'incremental')
+
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v5
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validar secretos
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=0
+
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::error::Falta el secreto SUPABASE_URL"
+            missing=1
+          fi
+
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::Falta el secreto SUPABASE_SERVICE_ROLE_KEY"
+            missing=1
+          fi
+
+          if [ "$missing" -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Ejecutar scraper incremental
+        run: node scripts/iberdrola-scraper.mjs
+        env:
+          SCRAPER_MODE: incremental
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          IBERDROLA_LANGUAGE: es
+          SCRAPER_PROXY_URL: ${{ secrets.SCRAPER_PROXY_URL }}
+          HTTP_PROXY: ${{ secrets.SCRAPER_PROXY_URL }}
+          HTTPS_PROXY: ${{ secrets.SCRAPER_PROXY_URL }}
+          NODE_USE_ENV_PROXY: '1'
+
+  monitor-diario:
+    name: Scraper Iberdrola (barrido diario)
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '15 2 * * *') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'full')
+
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v5
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validar secretos
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=0
+
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::error::Falta el secreto SUPABASE_URL"
+            missing=1
+          fi
+
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::Falta el secreto SUPABASE_SERVICE_ROLE_KEY"
+            missing=1
+          fi
+
+          if [ "$missing" -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Ejecutar scraper full diario
+        run: node scripts/iberdrola-scraper.mjs
+        env:
+          SCRAPER_MODE: full
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          IBERDROLA_LANGUAGE: es
+          SCRAPER_PROXY_URL: ${{ secrets.SCRAPER_PROXY_URL }}
+          HTTP_PROXY: ${{ secrets.SCRAPER_PROXY_URL }}
+          HTTPS_PROXY: ${{ secrets.SCRAPER_PROXY_URL }}
+          NODE_USE_ENV_PROXY: '1'
