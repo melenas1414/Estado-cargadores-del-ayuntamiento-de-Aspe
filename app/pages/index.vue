@@ -145,6 +145,7 @@ const periodo = ref<Periodo>('7d');
 const diasPrediccion = ref<HorizontePrediccion>(0);
 const cargadorSeleccionado = ref<FiltroCargador>('all');
 const route = useRoute();
+const { trackAction } = useAnalytics();
 
 function normalizarPath(path: string): string {
   const clean = path.replace(/\/+$/, '');
@@ -261,6 +262,12 @@ async function refrescarTodo() {
     refrescarEta(),
   ]);
   refrescando.value = false;
+
+  trackAction('manual_refresh', {
+    active_tab: activeTab.value,
+    station_filter: cargadorSeleccionado.value,
+    period: periodo.value,
+  });
 }
 
 // ─── Polling inteligente cada 60 s ────────────────────────────────────────
@@ -329,6 +336,18 @@ watch(opcionesCargador, (opciones: OpcionCargador[]) => {
   if (!existe) cargadorSeleccionado.value = 'all';
 });
 
+watch(periodo, (value) => {
+  trackAction('filter_period_change', { value });
+});
+
+watch(diasPrediccion, (value) => {
+  trackAction('prediction_horizon_change', { value });
+});
+
+watch(cargadorSeleccionado, (value) => {
+  trackAction('station_filter_change', { value });
+});
+
 const cargadorSeleccionadoLabel = computed(() => {
   if (cargadorSeleccionado.value === 'all') return 'Todos los cargadores';
   const found = opcionesCargador.value.find((op: OpcionCargador) => op.id === cargadorSeleccionado.value);
@@ -383,6 +402,10 @@ function tabButtonClass(tabId: DashboardTab): string {
     return TAB_THEMES[tabId].button;
   }
   return 'border border-transparent bg-slate-950/50 text-slate-400 hover:bg-slate-900 hover:text-slate-200';
+}
+
+function onTabClick(tabId: DashboardTab): void {
+  trackAction('tab_navigation_click', { tab: tabId });
 }
 
 function libresPorCargador(c: any) {
@@ -782,6 +805,7 @@ useHead(() => ({
             :to="TAB_PATHS[tab.id]"
             class="min-w-[150px] snap-start flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all md:min-w-0"
             :class="tabButtonClass(tab.id)"
+            @click="onTabClick(tab.id)"
           >
             <component :is="tab.icon" class="h-4 w-4" />
             {{ tab.label }}

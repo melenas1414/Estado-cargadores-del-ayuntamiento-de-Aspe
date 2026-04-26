@@ -1,6 +1,7 @@
 <template>
   <div class="dark">
     <NuxtPage />
+    <CookieConsent />
   </div>
 </template>
 
