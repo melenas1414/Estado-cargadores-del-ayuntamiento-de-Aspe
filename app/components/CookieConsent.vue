@@ -32,6 +32,20 @@ function gtagConsentUpdate(granted: boolean) {
   });
 }
 
+function gtagConsentDefaultDenied() {
+  if (typeof window === 'undefined') return;
+  ensureGtagStub();
+  if ((window as any).__gaDefaultConsentSet) return;
+  (window as any).gtag('consent', 'default', {
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied',
+    analytics_storage: 'denied',
+    wait_for_update: 500,
+  });
+  (window as any).__gaDefaultConsentSet = true;
+}
+
 function clearAnalyticsCookies() {
   if (typeof document === 'undefined') return;
   const cookieNames = ['_ga', '_gid', '_gat'];
@@ -51,24 +65,28 @@ function clearAnalyticsCookies() {
   }
 }
 
+function configureGoogleAnalyticsOnce() {
+  if (typeof window === 'undefined') return;
+  if ((window as any).__gaConfigured) return;
+  ensureGtagStub();
+  (window as any).gtag('js', new Date());
+  (window as any).gtag('config', gaId, {
+    anonymize_ip: true,
+    allow_google_signals: false,
+    allow_ad_personalization_signals: false,
+    cookie_flags: 'SameSite=Lax;Secure',
+  });
+  (window as any).__gaConfigured = true;
+}
+
 function loadGoogleAnalytics() {
   if (!gaId || typeof document === 'undefined') return;
 
-  ensureGtagStub();
-  if (!(window as any).__gaConfigured) {
-    (window as any).gtag('consent', 'default', {
-      ad_storage: 'denied',
-      analytics_storage: 'denied',
-      ad_user_data: 'denied',
-      ad_personalization: 'denied',
-      wait_for_update: 500,
-    });
-    (window as any).__gaConfigured = true;
-  }
+  gtagConsentDefaultDenied();
 
-  const existingScript = document.querySelector(`script[data-ga-id="${gaId}"]`);
+  const existingScript = document.querySelector(`script[data-ga-id="${gaId}"]`) as HTMLScriptElement | null;
   if (existingScript) {
-    gtagConsentUpdate(true);
+    configureGoogleAnalyticsOnce();
     return;
   }
 
@@ -77,14 +95,7 @@ function loadGoogleAnalytics() {
   script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId)}`;
   script.setAttribute('data-ga-id', gaId);
   script.onload = () => {
-    (window as any).gtag('js', new Date());
-    (window as any).gtag('config', gaId, {
-      anonymize_ip: true,
-      allow_google_signals: false,
-      allow_ad_personalization_signals: false,
-      cookie_flags: 'SameSite=Lax;Secure',
-    });
-    gtagConsentUpdate(true);
+    configureGoogleAnalyticsOnce();
   };
   document.head.appendChild(script);
 }
@@ -98,6 +109,7 @@ function acceptCookies() {
   saveConsent('accepted');
   showBanner.value = false;
   loadGoogleAnalytics();
+  gtagConsentUpdate(true);
 }
 
 function rejectCookies() {
@@ -112,11 +124,13 @@ function openCookieSettings() {
 }
 
 onMounted(() => {
+  loadGoogleAnalytics();
+
   const stored = localStorage.getItem(CONSENT_KEY);
   if (stored === 'accepted' || stored === 'rejected') {
     consent.value = stored;
     if (stored === 'accepted') {
-      loadGoogleAnalytics();
+      gtagConsentUpdate(true);
     } else {
       gtagConsentUpdate(false);
       clearAnalyticsCookies();
@@ -150,7 +164,7 @@ onMounted(() => {
           <p class="text-sm font-semibold text-white">Configuración de cookies</p>
           <p class="mt-1 text-xs text-slate-300">
             Usamos cookies analíticas para medir el uso de la web y mejorar el servicio.
-            Si no aceptas, no se cargará Google Analytics ni se activará almacenamiento analítico.
+            Si no aceptas, Google Analytics se mantiene con consentimiento denegado y sin almacenamiento analítico.
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
