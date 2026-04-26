@@ -27,32 +27,40 @@ const IBERDROLA_BASE_URL =
 const KNOWN_STATIONS = [
   {
     station_id: 'ESIBE22E0001001',
+    cupr_id: '144579',
     location_name: 'Av. Carlos Soria, 11, Aspe',
-    address_tokens: ['av', 'carlos', 'soria', '11', 'aspe'],
+    address_tokens: ['carlos', 'soria', '11', 'aspe'],
   },
   {
     station_id: 'ESIBE22E0001002',
+    cupr_id: '5848',
     location_name: 'Av. Constitución 42, Aspe',
-    address_tokens: ['av', 'constitucion', '42', 'aspe'],
+    address_tokens: ['constitucion', '42', 'aspe'],
   },
   {
     station_id: 'ESIBE22E0001003',
+    cupr_id: '97897',
     location_name: 'Av. Padre Ismael 34, Aspe',
-    address_tokens: ['av', 'padre', 'ismael', '34', 'aspe'],
+    address_tokens: ['padre', 'ismael', '34', 'aspe'],
   },
   {
     station_id: 'ESIBE22E0001004',
+    cupr_id: '97917',
     location_name: 'Av. Juan Carlos I 36, Aspe',
-    address_tokens: ['av', 'juan', 'carlos', 'i', '36', 'aspe'],
+    address_tokens: ['juan', 'carlos', '36', 'aspe'],
   },
   {
     station_id: 'ESIBE22E0001005',
+    cupr_id: '5849',
     location_name: 'Calle Orihuela 100, Aspe',
-    address_tokens: ['calle', 'orihuela', '100', 'aspe'],
+    address_tokens: ['orihuela', '100', 'aspe'],
   },
 ]
 
 const KNOWN_STATION_IDS = new Set(KNOWN_STATIONS.map((station) => station.station_id))
+const KNOWN_STATIONS_BY_CUPR = new Map(
+  KNOWN_STATIONS.filter((station) => station.cupr_id).map((station) => [station.cupr_id, station]),
+)
 
 const BBOX_INCREMENTAL = {
   latitudeMax: Number(process.env.IBERDROLA_BBOX_LAT_MAX ?? '38.365'),
@@ -116,10 +124,32 @@ function firstNonEmpty(...values) {
   return null
 }
 
+function formatAddressObject(value) {
+  if (!value || typeof value !== 'object') return null
+
+  const streetName = firstNonEmpty(value.streetName, value.street, value.name)
+  const streetNum = firstNonEmpty(value.streetNum, value.number)
+  const townName = firstNonEmpty(value.townName, value.city)
+
+  const line = [streetName, streetNum].filter(Boolean).join(' ')
+  if (!line && !townName) return null
+
+  return [line, townName].filter(Boolean).join(', ')
+}
+
 function extractAddress(item) {
+  const structuredAddress =
+    formatAddressObject(item?.locationData?.cpAddress) ||
+    formatAddressObject(item?.locationData?.supplyPointData?.cpAddress) ||
+    formatAddressObject(item?.supplyPointData?.cpAddress)
+
   return firstNonEmpty(
+    structuredAddress,
+    item?.locationData?.cuprName,
     item?.locationData?.cpAddress,
     item?.locationData?.address,
+    item?.locationData?.supplyPointData?.cpAddress,
+    item?.supplyPointData?.cpAddress,
     item?.address,
     item?.addressFull,
     item?.name,
@@ -166,7 +196,13 @@ function extractLon(item) {
   )
 }
 
-function resolveKnownStation(addressText) {
+function resolveKnownStationFromItem(item, addressText) {
+  const cuprId = extractCuprId(item)
+  if (cuprId) {
+    const knownByCupr = KNOWN_STATIONS_BY_CUPR.get(String(cuprId))
+    if (knownByCupr) return knownByCupr
+  }
+
   const tokens = new Set(addressTokens(addressText))
   return KNOWN_STATIONS.find((station) =>
     station.address_tokens.every((term) => tokens.has(term)),
@@ -266,7 +302,9 @@ function socketIsOutOfService(statusCode) {
 
 function buildRow(listItem, detailItem) {
   const address = extractAddress(detailItem) || extractAddress(listItem)
-  const known = resolveKnownStation(address)
+  const known =
+    resolveKnownStationFromItem(detailItem, address) ||
+    resolveKnownStationFromItem(listItem, address)
 
   // Ignoramos estaciones fuera del listado oficial conocido para evitar ruido/duplicados.
   if (!known) return null
@@ -392,7 +430,7 @@ async function main() {
     console.log('[debug] Candidatas detectadas:')
     for (const item of list) {
       const address = extractAddress(item)
-      const known = resolveKnownStation(address)
+      const known = resolveKnownStationFromItem(item, address)
       const lat = extractLat(item)
       const lon = extractLon(item)
       console.log(
@@ -408,7 +446,7 @@ async function main() {
   for (const item of list) {
     try {
       const listAddress = extractAddress(item)
-      const knownFromList = resolveKnownStation(listAddress)
+      const knownFromList = resolveKnownStationFromItem(item, listAddress)
       if (!knownFromList) {
         if (SCRAPER_DEBUG_RESPONSES) {
           console.log(
@@ -447,7 +485,7 @@ async function main() {
     console.log('[diag] No hay filas insertables. Resumen de candidatas detectadas:')
     for (const item of list.slice(0, 20)) {
       const address = extractAddress(item)
-      const known = resolveKnownStation(address)
+      const known = resolveKnownStationFromItem(item, address)
       const cuprId = extractCuprId(item)
       const cpId = extractCpId(item)
       console.log(
