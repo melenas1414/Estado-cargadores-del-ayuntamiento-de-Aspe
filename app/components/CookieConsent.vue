@@ -128,7 +128,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <>
+  <div>
     <button
       class="fixed bottom-4 left-4 z-50 rounded-full border border-slate-700 bg-slate-900/95 px-4 py-2 text-xs font-semibold text-slate-200 shadow-lg backdrop-blur transition hover:border-slate-500 hover:text-white"
       type="button"
@@ -171,5 +171,5 @@ onMounted(() => {
         </div>
       </div>
     </div>
-  </>
+  </div>
 </template>
