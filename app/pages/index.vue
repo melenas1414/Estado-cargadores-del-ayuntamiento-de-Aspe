@@ -454,6 +454,22 @@ onMounted(() => {
   loadAbMetricsFromStorage();
   trackRecommendedLinksImpression('mount', route.path);
 
+  // Enviar resumen A/B acumulado a GA4
+  nextTick(() => {
+    const { A, B } = abMetricsSummary.value;
+    trackAction('ab_recommended_links_summary', {
+      variant_assigned: recommendedLinksVariant.value,
+      position: recommendedLinksPosition.value,
+      a_impressions: A.impressions,
+      a_clicks: A.clicks,
+      a_ctr: parseFloat(A.ctr.toFixed(2)),
+      b_impressions: B.impressions,
+      b_clicks: B.clicks,
+      b_ctr: parseFloat(B.ctr.toFixed(2)),
+      winner: abWinnerVariant.value ?? 'none',
+    });
+  });
+
   intervaloRefresco = setInterval(() => {
     pollingInteligente();
   }, 60_000);
@@ -1320,41 +1336,7 @@ if (!props.disableSeo) {
               :por-estacion="metricasData.porEstacion ?? []"
             />
 
-            <section class="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-              <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Experimento A/B · Enlaces recomendados
-                </h3>
-                <span class="rounded-full bg-slate-800 px-2.5 py-1 text-[11px] text-slate-300 ring-1 ring-slate-700">
-                  Este navegador
-                </span>
-              </div>
 
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <div class="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-                  <p class="text-xs text-slate-500">Variante A · bloque abajo</p>
-                  <p class="mt-1 text-sm text-slate-300">Impresiones: <strong>{{ abMetricsSummary.A.impressions }}</strong></p>
-                  <p class="text-sm text-slate-300">Clics: <strong>{{ abMetricsSummary.A.clicks }}</strong></p>
-                  <p class="text-sm text-emerald-300">CTR: <strong>{{ formatCtr(abMetricsSummary.A.ctr) }}</strong></p>
-                </div>
-
-                <div class="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-                  <p class="text-xs text-slate-500">Variante B · bloque arriba</p>
-                  <p class="mt-1 text-sm text-slate-300">Impresiones: <strong>{{ abMetricsSummary.B.impressions }}</strong></p>
-                  <p class="text-sm text-slate-300">Clics: <strong>{{ abMetricsSummary.B.clicks }}</strong></p>
-                  <p class="text-sm text-cyan-300">CTR: <strong>{{ formatCtr(abMetricsSummary.B.ctr) }}</strong></p>
-                </div>
-              </div>
-
-              <div class="mt-3 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-xs text-slate-400">
-                <span>Total impresiones: <strong class="text-slate-200">{{ abMetricsSummary.totalImpressions }}</strong></span>
-                <span class="mx-2">·</span>
-                <span>Total clics: <strong class="text-slate-200">{{ abMetricsSummary.totalClicks }}</strong></span>
-                <span class="mx-2">·</span>
-                <span v-if="abWinnerVariant">Ganadora actual: <strong class="text-emerald-300">{{ abWinnerVariant }}</strong></span>
-                <span v-else>Ganadora actual: <strong class="text-slate-300">empate / sin datos</strong></span>
-              </div>
-            </section>
           </section>
 
           <!-- ════════ TAB: DIAGNÓSTICO ════════ -->
