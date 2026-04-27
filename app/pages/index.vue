@@ -989,51 +989,72 @@ if (!props.disableSeo) {
         </div>
       </nav>
 
+      <!-- ════════ BANNER ANUNCIO TOP (variante B) ════════ -->
       <section
         v-if="recommendedLinksPosition === 'top'"
-        class="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/95 via-slate-900/80 to-slate-950/95 p-4 md:p-5"
+        class="relative overflow-hidden rounded-2xl p-px"
+        style="background: linear-gradient(135deg, rgba(6,182,212,0.6) 0%, rgba(16,185,129,0.5) 50%, rgba(139,92,246,0.4) 100%)"
       >
-        <div class="mb-3 flex items-center justify-between gap-3">
-          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">
-            Enlaces recomendados
-          </h2>
-          <span class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-300 ring-1 ring-emerald-500/35">
-            Ahorro y movilidad
-          </span>
-        </div>
+        <!-- Label publicidad -->
+        <span class="absolute right-3 top-2.5 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-medium uppercase tracking-widest text-slate-400">
+          Publicidad
+        </span>
 
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <a
-            :href="RECOMMENDED_LINKS.tariffComparator"
-            target="_blank"
-            rel="sponsored noopener noreferrer"
-            class="group rounded-xl border border-cyan-500/30 bg-cyan-500/8 p-4 transition-all hover:border-cyan-400/60 hover:bg-cyan-500/12"
-            @click="onRecommendedLinkClick('tariff_comparator', 'top')"
-          >
-            <p class="text-xs uppercase tracking-wide text-cyan-300">Comparador de tarifa de luz</p>
-            <p class="mt-1 text-sm font-semibold text-white">
-              Compara tu tarifa y busca ahorro mensual en electricidad
-            </p>
-            <p class="mt-1 text-xs text-slate-400 group-hover:text-slate-300">
-              Ver comparador y recomendaciones ↗
-            </p>
-          </a>
+        <div class="relative rounded-2xl bg-slate-950/92 p-4 backdrop-blur-sm md:p-5">
+          <!-- Glow de fondo -->
+          <div class="pointer-events-none absolute inset-0 rounded-2xl opacity-20" style="background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(6,182,212,0.5) 0%, transparent 70%)"></div>
 
-          <a
-            :href="RECOMMENDED_LINKS.teslaReferral"
-            target="_blank"
-            rel="sponsored noopener noreferrer"
-            class="group rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4 transition-all hover:border-emerald-400/60 hover:bg-emerald-500/12"
-            @click="onRecommendedLinkClick('tesla_referral', 'top')"
-          >
-            <p class="text-xs uppercase tracking-wide text-emerald-300">Recomendación Tesla</p>
-            <p class="mt-1 text-sm font-semibold text-white">
-              Consigue 2.000 km de Supercarga gratis o € 500 de descuento
-            </p>
-            <p class="mt-1 text-xs text-slate-400 group-hover:text-slate-300">
-              Ver enlace de recomendación Tesla ↗
-            </p>
-          </a>
+          <div class="relative grid grid-cols-1 gap-3 md:grid-cols-2">
+            <!-- Tarifa luz -->
+            <a
+              :href="RECOMMENDED_LINKS.tariffComparator"
+              target="_blank"
+              rel="sponsored noopener noreferrer"
+              class="group relative overflow-hidden rounded-xl p-px transition-all duration-300"
+              style="background: linear-gradient(135deg, rgba(6,182,212,0.5) 0%, rgba(6,182,212,0.15) 100%)"
+              @click="onRecommendedLinkClick('tariff_comparator', 'top')"
+            >
+              <div class="relative flex h-full flex-col gap-2 rounded-xl bg-slate-950/85 p-4 transition-colors group-hover:bg-slate-900/90">
+                <div class="flex items-center gap-2">
+                  <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-cyan-500/40">
+                    <img src="/zoeconecta-icon.png" alt="ZOE Conecta" class="h-6 w-6 object-contain" />
+                  </div>
+                  <p class="text-[11px] font-semibold uppercase tracking-widest text-cyan-300">Tarifa de luz</p>
+                </div>
+                <p class="text-sm font-bold leading-snug text-white">
+                  ¿Estás pagando de más? Compara tu tarifa eléctrica ahora
+                </p>
+                <p class="mt-auto flex items-center gap-1 text-xs font-medium text-cyan-400 group-hover:text-cyan-300">
+                  Comparar gratis <svg class="h-3 w-3 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+                </p>
+              </div>
+            </a>
+
+            <!-- Tesla -->
+            <a
+              :href="RECOMMENDED_LINKS.teslaReferral"
+              target="_blank"
+              rel="sponsored noopener noreferrer"
+              class="group relative overflow-hidden rounded-xl p-px transition-all duration-300"
+              style="background: linear-gradient(135deg, rgba(16,185,129,0.5) 0%, rgba(16,185,129,0.15) 100%)"
+              @click="onRecommendedLinkClick('tesla_referral', 'top')"
+            >
+              <div class="relative flex h-full flex-col gap-2 rounded-xl bg-slate-950/85 p-4 transition-colors group-hover:bg-slate-900/90">
+                <div class="flex items-center gap-2">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-black ring-1 ring-emerald-500/40 p-1">
+                    <img src="/tesla-logo.svg" alt="Tesla" class="h-full w-full object-contain" />
+                  </div>
+                  <p class="text-[11px] font-semibold uppercase tracking-widest text-emerald-300">Tesla Referral</p>
+                </div>
+                <p class="text-sm font-bold leading-snug text-white">
+                  2.000 km de Supercarga gratis o €500 de descuento en tu Tesla
+                </p>
+                <p class="mt-auto flex items-center gap-1 text-xs font-medium text-emerald-400 group-hover:text-emerald-300">
+                  Ver oferta <svg class="h-3 w-3 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+                </p>
+              </div>
+            </a>
+          </div>
         </div>
       </section>
 
@@ -1354,51 +1375,72 @@ if (!props.disableSeo) {
         </div>
       </Transition>
 
+      <!-- ════════ BANNER ANUNCIO BOTTOM (variante A) ════════ -->
       <section
         v-if="recommendedLinksPosition === 'bottom'"
-        class="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/95 via-slate-900/80 to-slate-950/95 p-4 md:p-5"
+        class="relative overflow-hidden rounded-2xl p-px"
+        style="background: linear-gradient(135deg, rgba(6,182,212,0.6) 0%, rgba(16,185,129,0.5) 50%, rgba(139,92,246,0.4) 100%)"
       >
-        <div class="mb-3 flex items-center justify-between gap-3">
-          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">
-            Enlaces recomendados
-          </h2>
-          <span class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-300 ring-1 ring-emerald-500/35">
-            Ahorro y movilidad
-          </span>
-        </div>
+        <!-- Label publicidad -->
+        <span class="absolute right-3 top-2.5 z-10 rounded-full bg-black/60 px-2 py-0.5 text-[9px] font-medium uppercase tracking-widest text-slate-400">
+          Publicidad
+        </span>
 
-        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <a
-            :href="RECOMMENDED_LINKS.tariffComparator"
-            target="_blank"
-            rel="sponsored noopener noreferrer"
-            class="group rounded-xl border border-cyan-500/30 bg-cyan-500/8 p-4 transition-all hover:border-cyan-400/60 hover:bg-cyan-500/12"
-            @click="onRecommendedLinkClick('tariff_comparator', 'bottom')"
-          >
-            <p class="text-xs uppercase tracking-wide text-cyan-300">Comparador de tarifa de luz</p>
-            <p class="mt-1 text-sm font-semibold text-white">
-              Compara tu tarifa y busca ahorro mensual en electricidad
-            </p>
-            <p class="mt-1 text-xs text-slate-400 group-hover:text-slate-300">
-              Ver comparador y recomendaciones ↗
-            </p>
-          </a>
+        <div class="relative rounded-2xl bg-slate-950/92 p-4 backdrop-blur-sm md:p-5">
+          <!-- Glow de fondo -->
+          <div class="pointer-events-none absolute inset-0 rounded-2xl opacity-20" style="background: radial-gradient(ellipse 70% 60% at 50% 0%, rgba(6,182,212,0.5) 0%, transparent 70%)"></div>
 
-          <a
-            :href="RECOMMENDED_LINKS.teslaReferral"
-            target="_blank"
-            rel="sponsored noopener noreferrer"
-            class="group rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4 transition-all hover:border-emerald-400/60 hover:bg-emerald-500/12"
-            @click="onRecommendedLinkClick('tesla_referral', 'bottom')"
-          >
-            <p class="text-xs uppercase tracking-wide text-emerald-300">Recomendación Tesla</p>
-            <p class="mt-1 text-sm font-semibold text-white">
-              Consigue 2.000 km de Supercarga gratis o € 500 de descuento
-            </p>
-            <p class="mt-1 text-xs text-slate-400 group-hover:text-slate-300">
-              Ver enlace de recomendación Tesla ↗
-            </p>
-          </a>
+          <div class="relative grid grid-cols-1 gap-3 md:grid-cols-2">
+            <!-- Tarifa luz -->
+            <a
+              :href="RECOMMENDED_LINKS.tariffComparator"
+              target="_blank"
+              rel="sponsored noopener noreferrer"
+              class="group relative overflow-hidden rounded-xl p-px transition-all duration-300"
+              style="background: linear-gradient(135deg, rgba(6,182,212,0.5) 0%, rgba(6,182,212,0.15) 100%)"
+              @click="onRecommendedLinkClick('tariff_comparator', 'bottom')"
+            >
+              <div class="relative flex h-full flex-col gap-2 rounded-xl bg-slate-950/85 p-4 transition-colors group-hover:bg-slate-900/90">
+                <div class="flex items-center gap-2">
+                  <div class="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white ring-1 ring-cyan-500/40">
+                    <img src="/zoeconecta-icon.png" alt="ZOE Conecta" class="h-6 w-6 object-contain" />
+                  </div>
+                  <p class="text-[11px] font-semibold uppercase tracking-widest text-cyan-300">Tarifa de luz</p>
+                </div>
+                <p class="text-sm font-bold leading-snug text-white">
+                  ¿Estás pagando de más? Compara tu tarifa eléctrica ahora
+                </p>
+                <p class="mt-auto flex items-center gap-1 text-xs font-medium text-cyan-400 group-hover:text-cyan-300">
+                  Comparar gratis <svg class="h-3 w-3 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+                </p>
+              </div>
+            </a>
+
+            <!-- Tesla -->
+            <a
+              :href="RECOMMENDED_LINKS.teslaReferral"
+              target="_blank"
+              rel="sponsored noopener noreferrer"
+              class="group relative overflow-hidden rounded-xl p-px transition-all duration-300"
+              style="background: linear-gradient(135deg, rgba(16,185,129,0.5) 0%, rgba(16,185,129,0.15) 100%)"
+              @click="onRecommendedLinkClick('tesla_referral', 'bottom')"
+            >
+              <div class="relative flex h-full flex-col gap-2 rounded-xl bg-slate-950/85 p-4 transition-colors group-hover:bg-slate-900/90">
+                <div class="flex items-center gap-2">
+                  <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-black ring-1 ring-emerald-500/40 p-1">
+                    <img src="/tesla-logo.svg" alt="Tesla" class="h-full w-full object-contain" />
+                  </div>
+                  <p class="text-[11px] font-semibold uppercase tracking-widest text-emerald-300">Tesla Referral</p>
+                </div>
+                <p class="text-sm font-bold leading-snug text-white">
+                  2.000 km de Supercarga gratis o €500 de descuento en tu Tesla
+                </p>
+                <p class="mt-auto flex items-center gap-1 text-xs font-medium text-emerald-400 group-hover:text-emerald-300">
+                  Ver oferta <svg class="h-3 w-3 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+                </p>
+              </div>
+            </a>
+          </div>
         </div>
       </section>
 
