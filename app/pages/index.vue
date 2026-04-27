@@ -25,6 +25,11 @@ type DashboardTabTheme = {
   badge: string;
 };
 
+const props = withDefaults(defineProps<{ disableSeo?: boolean; initialTab?: DashboardTab }>(), {
+  disableSeo: false,
+  initialTab: undefined,
+});
+
 const DASHBOARD_TABS: Array<{ id: DashboardTab; label: string; icon: any }> = [
   { id: 'resumen', label: 'Resumen', icon: LayoutPanelTop },
   { id: 'mapa', label: 'Mapa', icon: MapIcon },
@@ -120,6 +125,22 @@ const TAB_THEMES: Record<DashboardTab, DashboardTabTheme> = {
   },
 };
 
+const RECOMMENDED_LINKS = {
+  tariffComparator: 'https://zoeconecta.com/?fluent-form=9',
+  teslaReferral: 'https://www.tesla.com/referral/santiago767265',
+} as const;
+
+type RecommendedLinksVariant = 'A' | 'B';
+type RecommendedLinksPosition = 'top' | 'bottom';
+type AbMetricKind = 'impressions' | 'clicks';
+type AbVariantMetrics = {
+  impressions: number;
+  clicks: number;
+};
+type AbRecommendedLinksMetrics = Record<RecommendedLinksVariant, AbVariantMetrics>;
+
+const AB_RECOMMENDED_LINKS_STORAGE_KEY = 'ab_recommended_links_metrics_v1';
+
 const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
   ESIBE22E0001001: { lat: 38.341118679046346, lon: -0.7654778230267333 },
   ESIBE22E0001002: { lat: 38.3476704, lon: -0.7691027 },
@@ -146,6 +167,15 @@ const diasPrediccion = ref<HorizontePrediccion>(0);
 const cargadorSeleccionado = ref<FiltroCargador>('all');
 const route = useRoute();
 const { trackAction } = useAnalytics();
+const recommendedLinksVariant = useCookie<RecommendedLinksVariant>('ab_recommended_links_variant', {
+  default: () => (Math.random() < 0.5 ? 'A' : 'B'),
+  maxAge: 60 * 60 * 24 * 120,
+  sameSite: 'lax',
+});
+
+if (recommendedLinksVariant.value !== 'A' && recommendedLinksVariant.value !== 'B') {
+  recommendedLinksVariant.value = Math.random() < 0.5 ? 'A' : 'B';
+}
 
 function normalizarPath(path: string): string {
   const clean = path.replace(/\/+$/, '');
@@ -157,13 +187,136 @@ function tabDesdePath(path: string): DashboardTab {
   return PATH_TO_TAB[normalizado] ?? 'resumen';
 }
 
-const activeTab = ref<DashboardTab>(tabDesdePath(route.path));
+const activeTab = ref<DashboardTab>(props.initialTab ?? tabDesdePath(route.path));
+const recommendedLinksPosition = computed<RecommendedLinksPosition>(() => {
+  return recommendedLinksVariant.value === 'B' ? 'top' : 'bottom';
+});
+const lastRecommendedImpressionPath = ref('');
+const abRecommendedLinksMetrics = ref<AbRecommendedLinksMetrics>({
+  A: { impressions: 0, clicks: 0 },
+  B: { impressions: 0, clicks: 0 },
+});
+
+function createEmptyAbMetrics(): AbRecommendedLinksMetrics {
+  return {
+    A: { impressions: 0, clicks: 0 },
+    B: { impressions: 0, clicks: 0 },
+  };
+}
+
+function loadAbMetricsFromStorage(): void {
+  if (!import.meta.client) return;
+
+  try {
+    const raw = window.localStorage.getItem(AB_RECOMMENDED_LINKS_STORAGE_KEY);
+    if (!raw) return;
+
+    const parsed = JSON.parse(raw) as Partial<AbRecommendedLinksMetrics>;
+    if (!parsed || typeof parsed !== 'object') return;
+
+    const next = createEmptyAbMetrics();
+
+    for (const variant of ['A', 'B'] as const) {
+      const data = parsed[variant];
+      if (!data || typeof data !== 'object') continue;
+
+      const impressions = Number((data as Partial<AbVariantMetrics>).impressions ?? 0);
+      const clicks = Number((data as Partial<AbVariantMetrics>).clicks ?? 0);
+
+      next[variant] = {
+        impressions: Number.isFinite(impressions) && impressions > 0 ? Math.floor(impressions) : 0,
+        clicks: Number.isFinite(clicks) && clicks > 0 ? Math.floor(clicks) : 0,
+      };
+    }
+
+    abRecommendedLinksMetrics.value = next;
+  } catch {
+    // no-op
+  }
+}
+
+function saveAbMetricsToStorage(): void {
+  if (!import.meta.client) return;
+
+  try {
+    window.localStorage.setItem(
+      AB_RECOMMENDED_LINKS_STORAGE_KEY,
+      JSON.stringify(abRecommendedLinksMetrics.value),
+    );
+  } catch {
+    // no-op
+  }
+}
+
+function incrementAbMetric(kind: AbMetricKind, variant: RecommendedLinksVariant): void {
+  const current = abRecommendedLinksMetrics.value[variant][kind] ?? 0;
+  abRecommendedLinksMetrics.value[variant][kind] = current + 1;
+  saveAbMetricsToStorage();
+}
+
+const abMetricsSummary = computed(() => {
+  const data = abRecommendedLinksMetrics.value;
+
+  const variantA = {
+    impressions: data.A.impressions,
+    clicks: data.A.clicks,
+    ctr: data.A.impressions > 0 ? (data.A.clicks / data.A.impressions) * 100 : 0,
+    position: 'bottom' as const,
+  };
+
+  const variantB = {
+    impressions: data.B.impressions,
+    clicks: data.B.clicks,
+    ctr: data.B.impressions > 0 ? (data.B.clicks / data.B.impressions) * 100 : 0,
+    position: 'top' as const,
+  };
+
+  return {
+    A: variantA,
+    B: variantB,
+    totalImpressions: variantA.impressions + variantB.impressions,
+    totalClicks: variantA.clicks + variantB.clicks,
+  };
+});
+
+const abWinnerVariant = computed<RecommendedLinksVariant | null>(() => {
+  const { A, B } = abMetricsSummary.value;
+
+  if (A.impressions === 0 && B.impressions === 0) return null;
+  if (A.impressions === 0) return 'B';
+  if (B.impressions === 0) return 'A';
+  if (Math.abs(A.ctr - B.ctr) < 0.001) return null;
+
+  return A.ctr > B.ctr ? 'A' : 'B';
+});
+
+function formatCtr(value: number): string {
+  return `${value.toFixed(1)}%`;
+}
+
+function trackRecommendedLinksImpression(reason: 'mount' | 'route_change', path: string): void {
+  if (lastRecommendedImpressionPath.value === path) return;
+
+  lastRecommendedImpressionPath.value = path;
+  incrementAbMetric('impressions', recommendedLinksVariant.value);
+  trackAction('recommended_links_impression', {
+    reason,
+    path,
+    variant: recommendedLinksVariant.value,
+    position: recommendedLinksPosition.value,
+    active_tab: activeTab.value,
+  });
+}
 
 watch(
   () => route.path,
   (newPath) => {
-    const tab = tabDesdePath(newPath);
-    if (tab !== activeTab.value) activeTab.value = tab;
+    if (!props.initialTab) {
+      const tab = tabDesdePath(newPath);
+      if (tab !== activeTab.value) activeTab.value = tab;
+    }
+
+    trackRecommendedLinksImpression('route_change', newPath);
   },
 );
 
@@ -298,6 +451,9 @@ async function pollingInteligente() {
 }
 
 onMounted(() => {
+  loadAbMetricsFromStorage();
+  trackRecommendedLinksImpression('mount', route.path);
+
   intervaloRefresco = setInterval(() => {
     pollingInteligente();
   }, 60_000);
@@ -406,6 +562,16 @@ function tabButtonClass(tabId: DashboardTab): string {
 
 function onTabClick(tabId: DashboardTab): void {
   trackAction('tab_navigation_click', { tab: tabId });
+}
+
+function onRecommendedLinkClick(linkKey: 'tariff_comparator' | 'tesla_referral', position: RecommendedLinksPosition): void {
+  incrementAbMetric('clicks', recommendedLinksVariant.value);
+  trackAction('recommended_link_click', {
+    link: linkKey,
+    position,
+    variant: recommendedLinksVariant.value,
+    active_tab: activeTab.value,
+  });
 }
 
 function libresPorCargador(c: any) {
@@ -528,11 +694,12 @@ function classesEstadoPunto(libres: number, total: number) {
 
 const runtimeConfig = useRuntimeConfig();
 const siteUrl = (runtimeConfig.public.siteUrl || 'https://cargadores-aspe.onlineexpansions.com').replace(/\/+$/, '');
-const tabActual = computed<DashboardTab>(() => tabDesdePath(route.path));
+const tabActual = computed<DashboardTab>(() => props.initialTab ?? tabDesdePath(route.path));
 const seoActual = computed(() => TAB_SEO[tabActual.value]);
 const canonicalPath = computed(() => TAB_PATHS[tabActual.value]);
 const canonicalUrl = computed(() => `${siteUrl}${canonicalPath.value}`);
 const rootUrl = `${siteUrl}/`;
+const socialImageUrl = `${siteUrl}/dashboard.png`;
 
 // ─── SEO estructurado ────────────────────────────────────────────────────────
 // Datos de estaciones para JSON-LD (LocalBusiness por punto de carga)
@@ -544,36 +711,44 @@ const SEO_STATIONS = [
   { id: 'ESIBE22E0001005', name: 'Cargador Eléctrico Aspe · Calle Orihuela',    street: 'Calle Orihuela, 100',      lat: 38.3385331, lon: -0.7766776 },
 ];
 
-useSeoMeta(() => ({
-  title: seoActual.value.title,
-  description: seoActual.value.description,
-  keywords: seoActual.value.keywords,
-  ogTitle: seoActual.value.ogTitle,
-  ogDescription: seoActual.value.ogDescription,
-  ogType: 'website',
-  ogLocale: 'es_ES',
-  ogUrl: canonicalUrl.value,
-  robots: 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
-  twitterCard: 'summary_large_image',
-  twitterTitle: seoActual.value.ogTitle,
-  twitterDescription: seoActual.value.ogDescription,
-}));
+if (!props.disableSeo) {
+  useSeoMeta({
+    title: () => seoActual.value.title,
+    description: () => seoActual.value.description,
+    keywords: () => seoActual.value.keywords,
+    ogTitle: () => seoActual.value.ogTitle,
+    ogDescription: () => seoActual.value.ogDescription,
+    ogImage: () => socialImageUrl,
+    ogImageSecureUrl: () => socialImageUrl,
+    ogImageAlt: 'Panel de estado de cargadores en Aspe',
+    ogImageWidth: '1200',
+    ogImageHeight: '630',
+    ogType: 'website',
+    ogLocale: 'es_ES',
+    ogUrl: () => canonicalUrl.value,
+    robots: 'index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1',
+    twitterCard: 'summary_large_image',
+    twitterTitle: () => seoActual.value.ogTitle,
+    twitterDescription: () => seoActual.value.ogDescription,
+    twitterImage: () => socialImageUrl,
+    twitterImageAlt: 'Panel de estado de cargadores en Aspe',
+  });
 
-useHead(() => ({
-  htmlAttrs: { lang: 'es' },
-  link: [
-    { rel: 'canonical', href: canonicalUrl.value },
-    { rel: 'alternate', hreflang: 'es', href: rootUrl },
-    { rel: 'alternate', hreflang: 'x-default', href: rootUrl },
-  ],
-  meta: [
-    // Geo meta tags para SEO local
-    { name: 'geo.region',    content: 'ES-VC' },
-    { name: 'geo.placename', content: 'Aspe, Alicante, España' },
-    { name: 'geo.position',  content: '38.3485;-0.7639' },
-    { name: 'ICBM',          content: '38.3485, -0.7639' },
-  ],
-  script: [
+  useHead(() => ({
+    htmlAttrs: { lang: 'es' },
+    link: [
+      { rel: 'canonical', href: canonicalUrl.value },
+      { rel: 'alternate', hreflang: 'es', href: rootUrl },
+      { rel: 'alternate', hreflang: 'x-default', href: rootUrl },
+    ],
+    meta: [
+      // Geo meta tags para SEO local
+      { name: 'geo.region',    content: 'ES-VC' },
+      { name: 'geo.placename', content: 'Aspe, Alicante, España' },
+      { name: 'geo.position',  content: '38.3485;-0.7639' },
+      { name: 'ICBM',          content: '38.3485, -0.7639' },
+    ],
+    script: [
     // ── 1. WebSite ────────────────────────────────────────────────────────────
     {
       type: 'application/ld+json',
@@ -738,8 +913,9 @@ useHead(() => ({
         ],
       }),
     },
-  ],
-}));
+    ],
+  }));
+}
 </script>
 
 <template>
@@ -812,6 +988,54 @@ useHead(() => ({
           </NuxtLink>
         </div>
       </nav>
+
+      <section
+        v-if="recommendedLinksPosition === 'top'"
+        class="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/95 via-slate-900/80 to-slate-950/95 p-4 md:p-5"
+      >
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">
+            Enlaces recomendados
+          </h2>
+          <span class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-300 ring-1 ring-emerald-500/35">
+            Ahorro y movilidad
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <a
+            :href="RECOMMENDED_LINKS.tariffComparator"
+            target="_blank"
+            rel="sponsored noopener noreferrer"
+            class="group rounded-xl border border-cyan-500/30 bg-cyan-500/8 p-4 transition-all hover:border-cyan-400/60 hover:bg-cyan-500/12"
+            @click="onRecommendedLinkClick('tariff_comparator', 'top')"
+          >
+            <p class="text-xs uppercase tracking-wide text-cyan-300">Comparador de tarifa de luz</p>
+            <p class="mt-1 text-sm font-semibold text-white">
+              Compara tu tarifa y busca ahorro mensual en electricidad
+            </p>
+            <p class="mt-1 text-xs text-slate-400 group-hover:text-slate-300">
+              Ver comparador y recomendaciones ↗
+            </p>
+          </a>
+
+          <a
+            :href="RECOMMENDED_LINKS.teslaReferral"
+            target="_blank"
+            rel="sponsored noopener noreferrer"
+            class="group rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4 transition-all hover:border-emerald-400/60 hover:bg-emerald-500/12"
+            @click="onRecommendedLinkClick('tesla_referral', 'top')"
+          >
+            <p class="text-xs uppercase tracking-wide text-emerald-300">Recomendación Tesla</p>
+            <p class="mt-1 text-sm font-semibold text-white">
+              Consigue 2.000 km de Supercarga gratis o € 500 de descuento
+            </p>
+            <p class="mt-1 text-xs text-slate-400 group-hover:text-slate-300">
+              Ver enlace de recomendación Tesla ↗
+            </p>
+          </a>
+        </div>
+      </section>
 
       <!-- ════════ BARRA DE CONTROLES GLOBAL ════════ -->
       <section
@@ -1074,6 +1298,42 @@ useHead(() => ({
               :cargador-mas-usado="metricasData.cargadorMasUsado"
               :por-estacion="metricasData.porEstacion ?? []"
             />
+
+            <section class="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+              <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                  Experimento A/B · Enlaces recomendados
+                </h3>
+                <span class="rounded-full bg-slate-800 px-2.5 py-1 text-[11px] text-slate-300 ring-1 ring-slate-700">
+                  Este navegador
+                </span>
+              </div>
+
+              <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div class="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+                  <p class="text-xs text-slate-500">Variante A · bloque abajo</p>
+                  <p class="mt-1 text-sm text-slate-300">Impresiones: <strong>{{ abMetricsSummary.A.impressions }}</strong></p>
+                  <p class="text-sm text-slate-300">Clics: <strong>{{ abMetricsSummary.A.clicks }}</strong></p>
+                  <p class="text-sm text-emerald-300">CTR: <strong>{{ formatCtr(abMetricsSummary.A.ctr) }}</strong></p>
+                </div>
+
+                <div class="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+                  <p class="text-xs text-slate-500">Variante B · bloque arriba</p>
+                  <p class="mt-1 text-sm text-slate-300">Impresiones: <strong>{{ abMetricsSummary.B.impressions }}</strong></p>
+                  <p class="text-sm text-slate-300">Clics: <strong>{{ abMetricsSummary.B.clicks }}</strong></p>
+                  <p class="text-sm text-cyan-300">CTR: <strong>{{ formatCtr(abMetricsSummary.B.ctr) }}</strong></p>
+                </div>
+              </div>
+
+              <div class="mt-3 rounded-xl border border-slate-700 bg-slate-950/50 px-3 py-2 text-xs text-slate-400">
+                <span>Total impresiones: <strong class="text-slate-200">{{ abMetricsSummary.totalImpressions }}</strong></span>
+                <span class="mx-2">·</span>
+                <span>Total clics: <strong class="text-slate-200">{{ abMetricsSummary.totalClicks }}</strong></span>
+                <span class="mx-2">·</span>
+                <span v-if="abWinnerVariant">Ganadora actual: <strong class="text-emerald-300">{{ abWinnerVariant }}</strong></span>
+                <span v-else>Ganadora actual: <strong class="text-slate-300">empate / sin datos</strong></span>
+              </div>
+            </section>
           </section>
 
           <!-- ════════ TAB: DIAGNÓSTICO ════════ -->
@@ -1093,6 +1353,54 @@ useHead(() => ({
           </section>
         </div>
       </Transition>
+
+      <section
+        v-if="recommendedLinksPosition === 'bottom'"
+        class="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/95 via-slate-900/80 to-slate-950/95 p-4 md:p-5"
+      >
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">
+            Enlaces recomendados
+          </h2>
+          <span class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-300 ring-1 ring-emerald-500/35">
+            Ahorro y movilidad
+          </span>
+        </div>
+
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <a
+            :href="RECOMMENDED_LINKS.tariffComparator"
+            target="_blank"
+            rel="sponsored noopener noreferrer"
+            class="group rounded-xl border border-cyan-500/30 bg-cyan-500/8 p-4 transition-all hover:border-cyan-400/60 hover:bg-cyan-500/12"
+            @click="onRecommendedLinkClick('tariff_comparator', 'bottom')"
+          >
+            <p class="text-xs uppercase tracking-wide text-cyan-300">Comparador de tarifa de luz</p>
+            <p class="mt-1 text-sm font-semibold text-white">
+              Compara tu tarifa y busca ahorro mensual en electricidad
+            </p>
+            <p class="mt-1 text-xs text-slate-400 group-hover:text-slate-300">
+              Ver comparador y recomendaciones ↗
+            </p>
+          </a>
+
+          <a
+            :href="RECOMMENDED_LINKS.teslaReferral"
+            target="_blank"
+            rel="sponsored noopener noreferrer"
+            class="group rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-4 transition-all hover:border-emerald-400/60 hover:bg-emerald-500/12"
+            @click="onRecommendedLinkClick('tesla_referral', 'bottom')"
+          >
+            <p class="text-xs uppercase tracking-wide text-emerald-300">Recomendación Tesla</p>
+            <p class="mt-1 text-sm font-semibold text-white">
+              Consigue 2.000 km de Supercarga gratis o € 500 de descuento
+            </p>
+            <p class="mt-1 text-xs text-slate-400 group-hover:text-slate-300">
+              Ver enlace de recomendación Tesla ↗
+            </p>
+          </a>
+        </div>
+      </section>
 
       <!-- ════════ FOOTER ════════ -->
       <footer class="border-t border-slate-800 pt-4 text-center text-xs text-slate-600">

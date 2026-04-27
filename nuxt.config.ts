@@ -8,10 +8,16 @@ export default defineNuxtConfig({
   },
   compatibilityDate: '2024-11-01',
 
+  site: {
+    name: 'Estado de Cargadores de Aspe',
+    url: process.env.NUXT_PUBLIC_SITE_URL ?? 'https://cargadores-aspe.onlineexpansions.com',
+  },
+
   // ─── Módulos ──────────────────────────────────────────────────────────────
   modules: [
     '@nuxtjs/supabase',
     '@nuxtjs/tailwindcss',
+    'nuxt-seo-utils',
   ],
 
   // ─── Configuración de Supabase ────────────────────────────────────────────
