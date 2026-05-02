@@ -1063,7 +1063,7 @@ if (!props.disableSeo) {
                   <p class="text-[11px] font-semibold uppercase tracking-widest text-emerald-300">Tesla Referral</p>
                 </div>
                 <p class="text-sm font-bold leading-snug text-white">
-                  2.000 km de Supercarga gratis o €500 de descuento en tu Tesla
+                  1.000 km de Supercarga gratis o €500 de descuento en tu Tesla
                 </p>
                 <p class="mt-auto flex items-center gap-1 text-xs font-medium text-emerald-400 group-hover:text-emerald-300">
                   Ver oferta <svg class="h-3 w-3 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
@@ -1415,7 +1415,7 @@ if (!props.disableSeo) {
                   <p class="text-[11px] font-semibold uppercase tracking-widest text-emerald-300">Tesla Referral</p>
                 </div>
                 <p class="text-sm font-bold leading-snug text-white">
-                  2.000 km de Supercarga gratis o €500 de descuento en tu Tesla
+                  1.000 km de Supercarga gratis o €500 de descuento en tu Tesla
                 </p>
                 <p class="mt-auto flex items-center gap-1 text-xs font-medium text-emerald-400 group-hover:text-emerald-300">
                   Ver oferta <svg class="h-3 w-3 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
