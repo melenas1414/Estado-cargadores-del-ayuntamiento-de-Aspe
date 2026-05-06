@@ -13,6 +13,7 @@ export default defineNuxtPlugin((nuxtApp) => {
 
   function sendEvent(name: string, params: Record<string, unknown> = {}) {
     if (!hasAnalyticsConsent()) return;
+    if (!(window as any).__gaConfigured) return;
     const gtag = (window as any).gtag;
     if (typeof gtag !== 'function') return;
     gtag('event', name, params);

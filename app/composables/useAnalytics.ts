@@ -9,6 +9,7 @@ export function useAnalytics() {
   function trackAction(action: string, params: Record<string, unknown> = {}) {
     if (typeof window === 'undefined') return;
     if (!hasAnalyticsConsent()) return;
+    if (!(window as any).__gaConfigured) return;
 
     const gtag = (window as any).gtag;
     if (typeof gtag !== 'function') return;

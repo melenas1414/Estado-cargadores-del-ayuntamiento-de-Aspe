@@ -84,9 +84,11 @@ function loadGoogleAnalytics() {
 
   gtagConsentDefaultDenied();
 
+  // Initialize gtag queue + config before script load so early events have destination.
+  configureGoogleAnalyticsOnce();
+
   const existingScript = document.querySelector(`script[data-ga-id="${gaId}"]`) as HTMLScriptElement | null;
   if (existingScript) {
-    configureGoogleAnalyticsOnce();
     return;
   }
 
@@ -95,7 +97,11 @@ function loadGoogleAnalytics() {
   script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaId)}`;
   script.setAttribute('data-ga-id', gaId);
   script.onload = () => {
-    configureGoogleAnalyticsOnce();
+    (window as any).__gaScriptLoaded = true;
+  };
+  script.onerror = () => {
+    (window as any).__gaScriptLoaded = false;
+    console.warn('[analytics] No se pudo cargar gtag.js. Revisa bloqueadores, CSP o red.');
   };
   document.head.appendChild(script);
 }
