@@ -14,8 +14,8 @@ function ensureGtagStub() {
   if (typeof window === 'undefined') return;
   (window as any).dataLayer = (window as any).dataLayer || [];
   if (!(window as any).gtag) {
-    (window as any).gtag = function gtag(...args: any[]) {
-      (window as any).dataLayer.push(args);
+    (window as any).gtag = function gtag() {
+      (window as any).dataLayer.push(arguments);
     };
   }
 }
