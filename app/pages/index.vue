@@ -12,7 +12,7 @@
  */
 import { Zap, RefreshCw, MapPin, Wifi, LayoutPanelTop, Map as MapIcon, BrainCircuit, Activity } from 'lucide-vue-next';
 
-type Periodo = 'today' | '7d' | '30d';
+type Periodo = 'today' | '7d' | '30d' | 'all';
 type HorizontePrediccion = 0 | 1 | 2 | 3 | 7 | 14;
 type FiltroCargador = 'all' | string;
 type OpcionCargador = { id: string; nombre: string };

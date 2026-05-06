@@ -4,7 +4,7 @@
  * Botones para seleccionar el período de análisis: Hoy / 7 días / Mes completo.
  */
 
-type Periodo = 'today' | '7d' | '30d';
+type Periodo = 'today' | '7d' | '30d' | 'all';
 
 interface Opcion {
   valor:    Periodo;
@@ -15,6 +15,7 @@ const OPCIONES: Opcion[] = [
   { valor: 'today', etiqueta: 'Hoy' },
   { valor: '7d',    etiqueta: 'Últimos 7 días' },
   { valor: '30d',   etiqueta: 'Mes completo' },
+  { valor: 'all',   etiqueta: 'Toda la vida' },
 ];
 
 const props = defineProps<{

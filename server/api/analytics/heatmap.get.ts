@@ -1,5 +1,5 @@
 /**
- * GET /api/analytics/heatmap?periodo=7d|30d|today
+ * GET /api/analytics/heatmap?periodo=7d|30d|today|all
  *
  * Devuelve una matriz de ocupación agrupada por día de la semana (0=Dom…6=Sáb)
  * y hora del día (0-23), expresada como porcentaje de ocupación (0-100).
@@ -14,10 +14,11 @@
  */
 import { serverSupabaseClient } from '#supabase/server';
 
-const PERIODOS: Record<string, string> = {
-  today: '1 day',
-  '7d':  '7 days',
-  '30d': '30 days',
+const DIAS_POR_PERIODO: Record<string, number | null> = {
+  today: 1,
+  '7d': 7,
+  '30d': 30,
+  all: null,
 };
 
 const madridFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -58,14 +59,15 @@ function parseStationId(raw: unknown): string | null {
 export default defineEventHandler(async (event) => {
   const query   = getQuery(event);
   const periodo = String(query.periodo ?? '7d');
-  const intervalo = PERIODOS[periodo] ?? '7 days';
+  const dias = Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)
+    ? DIAS_POR_PERIODO[periodo]
+    : 7;
   const stationId = parseStationId(query.station_id);
 
   const supabase = await serverSupabaseClient(event);
 
   // Query directa estable para todos los casos (evita discrepancias de RPC en producción).
-  const desde = new Date();
-  desde.setDate(desde.getDate() - (periodo === 'today' ? 1 : periodo === '7d' ? 7 : 30));
+  const desde = dias === null ? null : new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
 
   const chunkSize = 1000;
   const maxRows = 30000;
@@ -75,9 +77,12 @@ export default defineEventHandler(async (event) => {
     let pageQuery = supabase
       .from('charging_logs')
       .select('created_at, is_available, station_id')
-      .gte('created_at', desde.toISOString())
       .order('created_at', { ascending: true })
       .range(offset, offset + chunkSize - 1);
+
+    if (desde) {
+      pageQuery = pageQuery.gte('created_at', desde.toISOString());
+    }
 
     if (stationId) {
       pageQuery = pageQuery.eq('station_id', stationId);

@@ -1,5 +1,5 @@
 /**
- * GET /api/analytics/metrics?periodo=today|7d|30d
+ * GET /api/analytics/metrics?periodo=today|7d|30d|all
  *
  * Devuelve métricas de uso agregadas:
  * - Tasa media de ocupación (% del tiempo con al menos un cargador ocupado)
@@ -9,10 +9,11 @@
  */
 import { serverSupabaseClient } from '#supabase/server';
 
-const DIAS_POR_PERIODO: Record<string, number> = {
+const DIAS_POR_PERIODO: Record<string, number | null> = {
   today: 1,
   '7d':  7,
   '30d': 30,
+  all: null,
 };
 
 function parseStationId(raw: unknown): string | null {
@@ -24,18 +25,25 @@ function parseStationId(raw: unknown): string | null {
 export default defineEventHandler(async (event) => {
   const query   = getQuery(event);
   const periodo = String(query.periodo ?? '7d');
-  const dias    = DIAS_POR_PERIODO[periodo] ?? 7;
+  const dias = Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)
+    ? DIAS_POR_PERIODO[periodo]
+    : 7;
   const stationId = parseStationId(query.station_id);
 
   const supabase = await serverSupabaseClient(event);
-  const desde    = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+  const desde = dias === null
+    ? null
+    : new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
 
   // ─── Obtener todos los registros del período ────────────────────────────
   let queryLogs = supabase
     .from('charging_logs')
     .select('station_id, location_name, is_available, created_at')
-    .gte('created_at', desde.toISOString())
     .order('created_at', { ascending: true });
+
+  if (desde) {
+    queryLogs = queryLogs.gte('created_at', desde.toISOString());
+  }
 
   if (stationId) {
     queryLogs = queryLogs.eq('station_id', stationId);

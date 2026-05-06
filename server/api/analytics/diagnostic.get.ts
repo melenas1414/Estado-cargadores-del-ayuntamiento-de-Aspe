@@ -1,10 +1,11 @@
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
 
-const DIAS_POR_PERIODO: Record<string, number> = {
+const DIAS_POR_PERIODO: Record<string, number | null> = {
   today: 1,
   '7d': 7,
   '30d': 30,
+  all: null,
 };
 
 const DIAS_ES = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
@@ -75,17 +76,24 @@ function inferZona(locationName: string): string {
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const periodo = String(query.periodo ?? '7d');
-  const dias = DIAS_POR_PERIODO[periodo] ?? 7;
+  const dias = Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)
+    ? DIAS_POR_PERIODO[periodo]
+    : 7;
   const stationId = parseStationId(query.station_id);
 
   const supabase = await serverSupabaseClient(event);
-  const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+  const desde = dias === null
+    ? null
+    : new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
 
   let queryLogs = supabase
     .from('charging_logs')
     .select('station_id, location_name, created_at, is_available, available_connectors, total_connectors, out_of_service_connectors, availability_updated_at')
-    .gte('created_at', desde.toISOString())
     .order('created_at', { ascending: true });
+
+  if (desde) {
+    queryLogs = queryLogs.gte('created_at', desde.toISOString());
+  }
 
   if (stationId) {
     queryLogs = queryLogs.eq('station_id', stationId);
