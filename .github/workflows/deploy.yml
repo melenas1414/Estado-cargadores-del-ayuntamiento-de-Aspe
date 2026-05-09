@@ -75,6 +75,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          if [ -z "${VERCEL_PROJECT_ID:-}" ]; then
+            echo "::error::Falta el secreto VERCEL_PROJECT_ID"
+            exit 1
+          fi
+
+          if [ -z "${VERCEL_ORG_ID:-}" ]; then
+            echo "::error::Falta el secreto VERCEL_ORG_ID"
+            exit 1
+          fi
+
           BODY='{"nodeVersion":"22.x"}'
 
           STATUS=$(curl -sS -o /tmp/vercel-project-update.json -w "%{http_code}" \
@@ -100,6 +110,9 @@ jobs:
             echo "::error::No se pudo forzar nodeVersion=22.x en Vercel"
             exit 1
           fi
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       - name: 🔗 Sincronizar configuración de Vercel
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
