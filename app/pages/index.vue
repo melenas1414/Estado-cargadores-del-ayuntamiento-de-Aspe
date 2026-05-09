@@ -13,7 +13,7 @@
 import { Zap, RefreshCw, MapPin, Wifi, LayoutPanelTop, Map as MapIcon, BrainCircuit, Activity } from 'lucide-vue-next';
 
 type Periodo = 'today' | '7d' | '30d' | 'all';
-type HorizontePrediccion = 0 | 1 | 2 | 3 | 7 | 14;
+type HorizontePrediccion = number;
 type FiltroCargador = 'all' | string;
 type OpcionCargador = { id: string; nombre: string };
 type DashboardTab = 'resumen' | 'mapa' | 'inteligencia' | 'diagnostico';
@@ -358,6 +358,107 @@ const {
   lazy: true,
 });
 
+const {
+  data:    duracionOcupacionData,
+  pending: duracionOcupacionPending,
+  refresh: refrescarDuracionOcupacion,
+} = useFetch('/api/analytics/occupation-duration', {
+  query: computed(() => ({
+    dias_historico: periodo.value === 'today' ? 7 : (periodo.value === '7d' ? 30 : (periodo.value === '30d' ? 90 : 180)),
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [periodo, cargadorSeleccionado],
+  lazy: true,
+});
+
+const {
+  data:    estimacionLiberacionData,
+  pending: estimacionLiberacionPending,
+  refresh: refrescarEstimacionLiberacion,
+} = useFetch('/api/analytics/estimated-release', {
+  query: computed(() => ({
+    dias_historico: 90,
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [cargadorSeleccionado],
+  lazy: true,
+});
+
+const {
+  data:    saludCargadoresData,
+  pending: saludCargadoresPending,
+  refresh: refrescarSaludCargadores,
+} = useFetch('/api/analytics/charger-health', {
+  query: computed(() => ({
+    periodo: periodo.value,
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [periodo, cargadorSeleccionado],
+  lazy: true,
+});
+
+const {
+  data:    ocupacionPorHoraData,
+  pending: ocupacionPorHoraPending,
+  refresh: refrescarOcupacionPorHora,
+} = useFetch('/api/analytics/occupancy-by-hour', {
+  query: computed(() => ({
+    periodo: periodo.value,
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [periodo, cargadorSeleccionado],
+  lazy: true,
+});
+
+const {
+  data:    ocupacionPorDiaData,
+  pending: ocupacionPorDiaPending,
+  refresh: refrescarOcupacionPorDia,
+} = useFetch('/api/analytics/occupancy-by-day', {
+  query: computed(() => ({
+    periodo: periodo.value,
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [periodo, cargadorSeleccionado],
+  lazy: true,
+});
+
+const {
+  data:    anomaliasData,
+  pending: anomaliasPending,
+  refresh: refrescarAnomalias,
+} = useFetch('/api/analytics/anomalies', {
+  query: computed(() => ({
+    period: periodo.value === 'today' ? '7d' : periodo.value,
+  })),
+  watch: [periodo],
+  lazy: true,
+});
+
+const {
+  data:    recomendacionesData,
+  pending: recomendacionesPending,
+  refresh: refrescarRecomendaciones,
+} = useFetch('/api/analytics/recommendations', {
+  query: computed(() => ({
+    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
+  })),
+  watch: [cargadorSeleccionado],
+  lazy: true,
+});
+
+const {
+  data:    rankingsData,
+  pending: rankingsPending,
+  refresh: refrescarRankings,
+} = useFetch('/api/analytics/rankings', {
+  query: computed(() => ({
+    period: periodo.value,
+  })),
+  watch: [periodo],
+  lazy: true,
+});
+
 // ─── Análisis: métricas ──────────────────────────────────────────────────────
 const {
   data:    metricasData,
@@ -413,6 +514,14 @@ async function refrescarTodo() {
     refrescarDiagnostico(),
     refrescarPrediccion(),
     refrescarEta(),
+    refrescarDuracionOcupacion(),
+    refrescarEstimacionLiberacion(),
+    refrescarSaludCargadores(),
+    refrescarOcupacionPorHora(),
+    refrescarOcupacionPorDia(),
+    refrescarAnomalias(),
+    refrescarRecomendaciones(),
+    refrescarRankings(),
   ]);
   refrescando.value = false;
 
@@ -443,6 +552,14 @@ async function pollingInteligente() {
         refrescarDiagnostico(),
         refrescarPrediccion(),
         refrescarEta(),
+        refrescarDuracionOcupacion(),
+        refrescarEstimacionLiberacion(),
+        refrescarSaludCargadores(),
+        refrescarOcupacionPorHora(),
+        refrescarOcupacionPorDia(),
+        refrescarAnomalias(),
+        refrescarRecomendaciones(),
+        refrescarRankings(),
       ]);
     }
   } finally {
@@ -582,6 +699,12 @@ const estacionRecomendadaDetalle = computed(() => {
 const activeTabTheme = computed<DashboardTabTheme>(() => TAB_THEMES[activeTab.value]);
 const isResumenOrMapa = computed<boolean>(() => activeTab.value === 'resumen' || activeTab.value === 'mapa');
 const muestraFiltroPeriodo = computed<boolean>(() => !isResumenOrMapa.value);
+const barrasOcupacionHora = computed(() => ocupacionPorHoraData.value?.points ?? []);
+const barrasOcupacionDia = computed(() => ocupacionPorDiaData.value?.points ?? []);
+const saludTop = computed(() => saludCargadoresData.value?.porEstacion?.slice(0, 5) ?? []);
+const recomendacionesTop = computed(() => recomendacionesData.value?.recommendations ?? []);
+const anomaliasTop = computed(() => anomaliasData.value?.anomalies?.slice(0, 6) ?? []);
+const rankingTop = computed(() => rankingsData.value?.rankings?.slice(0, 5) ?? []);
 const activeTabLabel = computed<string>(() => {
   const found = DASHBOARD_TABS.find((tab) => tab.id === activeTab.value);
   return found?.label ?? 'Resumen';
@@ -1339,6 +1462,9 @@ if (!props.disableSeo) {
                 :dia-semana="prediccionData.diaSemana"
                 :fecha-objetivo="prediccionData.fechaObjetivo"
                 :dias-hacia-futuro="prediccionData.diasHaciaFuturo"
+                :confianza="prediccionData.confianza"
+                :metodo-prediccion="prediccionData.metodoPrediccion"
+                :usa-fallback-global="prediccionData.usaFallbackGlobal"
                 :franjas="prediccionData.franjas"
                 :horas-recomendadas="prediccionData.horasRecomendadas"
                 :hay-suficientes-datos="prediccionData.haySuficientesDatos"
@@ -1360,6 +1486,132 @@ if (!props.disableSeo) {
               :cargador-mas-usado="metricasData.cargadorMasUsado"
               :por-estacion="metricasData.porEstacion ?? []"
             />
+
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-1">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Tiempo estimado de liberación</h3>
+                <div v-if="estimacionLiberacionPending" class="mt-3 h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+                <div v-else class="mt-3 space-y-2">
+                  <p class="text-sm text-slate-300">{{ estimacionLiberacionData?.location_name ?? 'Sin cargador seleccionado' }}</p>
+                  <p class="text-3xl font-bold" :class="(estimacionLiberacionData?.estimatedMinutesUntilFree ?? 0) <= 0 ? 'text-emerald-400' : 'text-amber-300'">
+                    {{ estimacionLiberacionData?.estimatedMinutesUntilFree ?? 0 }} min
+                  </p>
+                  <p class="text-xs text-slate-500">
+                    Método: {{ estimacionLiberacionData?.metodo ?? 'sin_datos' }} · confianza {{ estimacionLiberacionData?.confianza ?? 'baja' }}
+                  </p>
+                </div>
+              </section>
+
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Duración media de ocupación</h3>
+                <div v-if="duracionOcupacionPending" class="mt-3 h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+                <div v-else class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                    <p class="text-xs text-slate-500">Media</p>
+                    <p class="text-2xl font-bold text-white">{{ duracionOcupacionData?.duracionMediaMin ?? 0 }} min</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                    <p class="text-xs text-slate-500">Mediana</p>
+                    <p class="text-2xl font-bold text-white">{{ duracionOcupacionData?.medianaMin ?? 0 }} min</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
+                    <p class="text-xs text-slate-500">P90</p>
+                    <p class="text-2xl font-bold text-white">{{ duracionOcupacionData?.p90Min ?? 0 }} min</p>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Ocupación por hora</h3>
+                <div v-if="ocupacionPorHoraPending" class="mt-3 h-28 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+                <div v-else class="mt-3 flex h-24 items-end gap-1">
+                  <div
+                    v-for="point in barrasOcupacionHora"
+                    :key="`occ-hour-${point.hour}`"
+                    class="group relative flex-1"
+                    :title="`${point.hour}h · ${point.occupancyPct}%`"
+                  >
+                    <div class="w-full rounded-t-sm bg-cyan-400/80" :style="{ height: `${Math.max(3, point.occupancyPct)}%` }" />
+                    <span v-if="point.hour % 6 === 0" class="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[9px] text-slate-500">{{ point.hour }}</span>
+                  </div>
+                </div>
+              </section>
+
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Ocupación por día</h3>
+                <div v-if="ocupacionPorDiaPending" class="mt-3 h-28 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+                <div v-else class="mt-3 space-y-2">
+                  <div v-for="point in barrasOcupacionDia" :key="`occ-day-${point.dayIndex}`" class="space-y-1">
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                      <span>{{ point.dayLabel }}</span>
+                      <span>{{ point.occupancyPct }}%</span>
+                    </div>
+                    <div class="h-2 rounded-full bg-slate-800">
+                      <div class="h-full rounded-full bg-amber-400" :style="{ width: `${point.occupancyPct}%` }" />
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Salud y fiabilidad</h3>
+                <div v-if="saludCargadoresPending" class="mt-3 h-32 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+                <div v-else class="mt-3 space-y-2">
+                  <div v-for="item in saludTop" :key="`health-${item.stationId}`" class="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs">
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="font-semibold text-slate-200">{{ item.locationName }}</p>
+                      <span
+                        class="rounded-full px-2 py-0.5 font-semibold uppercase"
+                        :class="item.fiabilidad === 'green' ? 'bg-emerald-500/20 text-emerald-300' : (item.fiabilidad === 'yellow' ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300')"
+                      >
+                        {{ item.fiabilidad }}
+                      </span>
+                    </div>
+                    <p class="mt-1 text-slate-400">Uptime {{ item.uptime }}% · Offline {{ item.tiempoOfflineHoras }}h · Desconexiones {{ item.desconexiones }}</p>
+                  </div>
+                </div>
+              </section>
+
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Ranking red</h3>
+                <div v-if="rankingsPending" class="mt-3 h-32 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+                <ol v-else class="mt-3 space-y-2 text-xs">
+                  <li v-for="item in rankingTop" :key="`ranking-${item.stationId}`" class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-slate-300">
+                    <p class="font-semibold text-white">#{{ item.position }} {{ item.icon }} {{ item.stationName }}</p>
+                    <p class="text-slate-500">Score {{ item.value }} · Disp. {{ item.details?.disponibilidadPct ?? 0 }}%</p>
+                  </li>
+                </ol>
+              </section>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Insights automáticos</h3>
+                <div v-if="recomendacionesPending" class="mt-3 h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+                <ul v-else class="mt-3 space-y-2 text-xs text-slate-300">
+                  <li v-for="(rec, i) in recomendacionesTop" :key="`rec-${i}`" class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2">
+                    {{ rec.text }}
+                  </li>
+                </ul>
+              </section>
+
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Anomalías detectadas</h3>
+                <div v-if="anomaliasPending" class="mt-3 h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+                <ul v-else class="mt-3 space-y-2 text-xs text-slate-300">
+                  <li v-for="(a, i) in anomaliasTop" :key="`anom-${i}`" class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2">
+                    <p class="font-semibold" :class="a.severity === 'high' ? 'text-rose-300' : (a.severity === 'medium' ? 'text-amber-300' : 'text-slate-300')">
+                      {{ a.stationName }} · {{ a.type }}
+                    </p>
+                    <p class="text-slate-400">{{ a.description }}</p>
+                  </li>
+                </ul>
+              </section>
+            </div>
 
 
           </section>

@@ -76,12 +76,52 @@ Se necesita para analitica del panel.
 ## 3) Funcionalidad principal
 
 - Estado actual por punto de carga (libre/ocupado/parcial).
-- Probabilidad al llegar y ETA por ventanas de tiempo.
+- Prediccion avanzada con fallback por historico global y nivel de confianza.
+- ETA estimada de liberacion por cargador.
+- Duracion media de ocupacion (media, mediana y p90).
 - Heatmap de ocupacion por dia/hora.
-- Prediccion por horizonte temporal.
+- Analitica historica por hora y por dia de semana.
+- Salud y fiabilidad por cargador (uptime, desconexiones y tiempo offline).
+- Deteccion de anomalias e insights automaticos.
+- Ranking operativo de cargadores.
 - Diagnostico operativo de saturacion y calidad de datos.
 - Navegacion por rutas SEO: /, /mapa, /inteligencia, /diagnostico.
+- Landings SEO locales y ficha por cargador (/charger/:id).
 - Banner de cookies propio con consentimiento granular para GA4.
+
+## Novedades recientes
+
+Resumen de los ultimos cambios aplicados al producto:
+
+- Prediccion reforzada:
+  - Fallback progresivo weekday -> global -> sin datos.
+  - Exposicion de confianza y metodo de prediccion en API.
+  - Selector de fechas disponibles basado en calidad real del historico.
+
+- Inteligencia ampliada en dashboard:
+  - Integracion de ETA de liberacion y duracion de ocupacion.
+  - Nuevas visualizaciones de ocupacion por hora y por dia.
+  - Bloques de salud de cargadores, ranking e insights.
+
+- Nuevos endpoints de analitica:
+  - /api/analytics/occupation-duration
+  - /api/analytics/estimated-release
+  - /api/analytics/charger-health
+  - /api/analytics/occupancy-by-hour
+  - /api/analytics/occupancy-by-day
+  - /api/analytics/anomalies
+  - /api/analytics/recommendations
+  - /api/analytics/rankings
+
+- SEO y contenido:
+  - Nuevas landings: /cargar-coche-electrico-aspe, /cargadores-gratis-aspe, /mejores-puntos-recarga-alicante, /mapa-ev-aspe-tiempo-real.
+  - Nueva ficha de cargador: /charger/:id.
+  - Sitemap de paginas ampliado para incluir rutas nuevas.
+  - Ruta /resumen mantenida con redireccion 301 hacia /.
+
+- Estado de alertas:
+  - Todo el modulo de alertas se ha retirado del proyecto por decision funcional actual.
+  - No hay pagina, endpoints ni referencias activas de alertas en el codigo.
 
 ## 4) Flujo funcional
 

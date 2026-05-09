@@ -3,7 +3,21 @@ export default defineEventHandler((event) => {
   const siteUrl = (runtimeConfig.public.siteUrl || 'https://cargadores-aspe.onlineexpansions.com').replace(/\/+$/, '');
   const lastmod = new Date().toISOString();
 
-  const paths = ['/', '/mapa', '/inteligencia', '/diagnostico'];
+  const paths = [
+    '/',
+    '/mapa',
+    '/inteligencia',
+    '/diagnostico',
+    '/cargar-coche-electrico-aspe',
+    '/cargadores-gratis-aspe',
+    '/mejores-puntos-recarga-alicante',
+    '/mapa-ev-aspe-tiempo-real',
+    '/charger/ESIBE22E0001001',
+    '/charger/ESIBE22E0001002',
+    '/charger/ESIBE22E0001003',
+    '/charger/ESIBE22E0001004',
+    '/charger/ESIBE22E0001005',
+  ];
 
   const urls = paths
     .map((path) => {

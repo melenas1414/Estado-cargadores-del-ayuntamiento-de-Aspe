@@ -87,5 +87,8 @@ export default defineNuxtConfig({
   // ─── Reglas de rutas (SEO friendly URLs) ────────────────────────────────
   routeRules: {
     '/resumen': { redirect: { to: '/', statusCode: 301 } },
+    '/admin/**': {
+      robots: false,
+    },
   },
 });

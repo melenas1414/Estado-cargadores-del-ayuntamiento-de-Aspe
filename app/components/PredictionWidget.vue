@@ -19,6 +19,9 @@ const props = defineProps<{
   diaSemana:            string;
   fechaObjetivo?:       string;
   diasHaciaFuturo?:     number;
+  confianza?:           'alta' | 'media' | 'baja';
+  metodoPrediccion?:    'weekday' | 'global' | 'sin_datos';
+  usaFallbackGlobal?:   boolean;
   franjas:              Franja[];
   horasRecomendadas:    number[];
   haySuficientesDatos:  boolean;
@@ -43,6 +46,9 @@ function colorBarra(pct: number): string {
 
 // Nivel de confianza textual
 const nivelConfianza = computed(() => {
+  if (props.confianza === 'alta') return 'Alta confianza';
+  if (props.confianza === 'media') return 'Confianza media';
+  if (props.confianza === 'baja' && props.haySuficientesDatos) return 'Confianza baja';
   if (!props.haySuficientesDatos) return 'Sin datos suficientes';
   if (props.probabilidad >= 80) return 'Alta confianza';
   if (props.probabilidad >= 60) return 'Confianza media';
@@ -110,6 +116,9 @@ const contextoMomento = computed(() => {
           <p class="mt-0.5 flex items-center gap-1 text-xs" :class="colorConfianza">
             <TrendingUp class="h-3 w-3" />
             {{ nivelConfianza }} · {{ probabilidad }}% disponibilidad
+          </p>
+          <p v-if="usaFallbackGlobal" class="mt-1 text-[11px] text-amber-300">
+            Predicción por histórico global (sin suficientes datos del mismo día)
           </p>
         </div>
         <div
