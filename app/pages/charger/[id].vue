@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import WeeklyHeatmap from '~/components/WeeklyHeatmap.vue';
+
 const route = useRoute();
 const stationId = computed(() => String(route.params.id ?? '').trim());
 
@@ -39,6 +41,32 @@ const { data: durationData, pending: durationPending } = useFetch('/api/analytic
 });
 
 const { data: releaseData, pending: releasePending } = useFetch('/api/analytics/estimated-release', {
+
+  const { data: heatmapData, pending: heatmapPending } = useFetch('/api/analytics/heatmap', {
+    query: computed(() => ({
+      periodo: '30d',
+      station_id: stationId.value,
+    })),
+    watch: [stationId],
+    lazy: true,
+  });
+
+  const { data: recommendationsData, pending: recommendationsPending } = useFetch('/api/analytics/recommendations', {
+    query: computed(() => ({
+      station_id: stationId.value,
+    })),
+    watch: [stationId],
+    lazy: true,
+  });
+
+  const { data: anomaliesData, pending: anomaliesPending } = useFetch('/api/analytics/anomalies', {
+    query: computed(() => ({
+      period: '30d',
+      station_id: stationId.value,
+    })),
+    watch: [stationId],
+    lazy: true,
+  });
   query: computed(() => ({
     dias_historico: 90,
     station_id: stationId.value,
@@ -129,6 +157,54 @@ useHead(() => ({
       </section>
 
       <NuxtLink to="/" class="inline-flex rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold hover:border-slate-500">Volver al dashboard</NuxtLink>
+
+        <!-- Heatmap semanal -->
+        <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Mapa de calor semanal</h2>
+          <div v-if="heatmapPending" class="mt-3 h-48 animate-pulse rounded-xl bg-slate-900" />
+          <WeeklyHeatmap v-else-if="heatmapData" :datos="heatmapData.datos ?? []" class="mt-3" />
+          <p v-else class="mt-3 text-xs text-slate-500">Sin datos suficientes.</p>
+        </section>
+
+        <!-- Insights y anomalías -->
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Insights automáticos</h2>
+            <div v-if="recommendationsPending" class="mt-3 h-24 animate-pulse rounded-xl bg-slate-900" />
+            <ul v-else-if="recommendationsData?.recommendations?.length" class="mt-3 space-y-2 text-xs text-slate-300">
+              <li
+                v-for="(rec, i) in recommendationsData.recommendations"
+                :key="`rec-${i}`"
+                class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2"
+              >
+                {{ rec.text }}
+              </li>
+            </ul>
+            <p v-else class="mt-3 text-xs text-slate-500">No hay insights para este cargador.</p>
+          </section>
+
+          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Anomalías detectadas</h2>
+            <div v-if="anomaliesPending" class="mt-3 h-24 animate-pulse rounded-xl bg-slate-900" />
+            <ul v-else-if="anomaliesData?.anomalies?.length" class="mt-3 space-y-2 text-xs text-slate-300">
+              <li
+                v-for="(a, i) in anomaliesData.anomalies"
+                :key="`anom-${i}`"
+                class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2"
+              >
+                <p
+                  class="font-semibold"
+                  :class="a.severity === 'high' ? 'text-rose-300' : a.severity === 'medium' ? 'text-amber-300' : 'text-slate-300'"
+                >
+                  {{ a.type }}
+                </p>
+                <p class="text-slate-400">{{ a.description }}</p>
+              </li>
+            </ul>
+            <p v-else class="mt-3 text-xs text-slate-500">No se detectan anomalías.</p>
+          </section>
+        </div>
+
     </div>
   </main>
 </template>

@@ -337,11 +337,8 @@ const {
   pending: heatmapPending,
   refresh: refrescarHeatmap,
 } = useFetch('/api/analytics/heatmap', {
-  query: computed(() => ({
-    periodo: periodo.value,
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
-  })),
-  watch: [periodo, cargadorSeleccionado],
+  query: computed(() => ({ periodo: periodo.value })),
+  watch: [periodo],
   lazy: true,
 });
 
@@ -365,22 +362,8 @@ const {
 } = useFetch('/api/analytics/occupation-duration', {
   query: computed(() => ({
     dias_historico: periodo.value === 'today' ? 7 : (periodo.value === '7d' ? 30 : (periodo.value === '30d' ? 90 : 180)),
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
   })),
-  watch: [periodo, cargadorSeleccionado],
-  lazy: true,
-});
-
-const {
-  data:    estimacionLiberacionData,
-  pending: estimacionLiberacionPending,
-  refresh: refrescarEstimacionLiberacion,
-} = useFetch('/api/analytics/estimated-release', {
-  query: computed(() => ({
-    dias_historico: 90,
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
-  })),
-  watch: [cargadorSeleccionado],
+  watch: [periodo],
   lazy: true,
 });
 
@@ -389,37 +372,8 @@ const {
   pending: saludCargadoresPending,
   refresh: refrescarSaludCargadores,
 } = useFetch('/api/analytics/charger-health', {
-  query: computed(() => ({
-    periodo: periodo.value,
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
-  })),
-  watch: [periodo, cargadorSeleccionado],
-  lazy: true,
-});
-
-const {
-  data:    ocupacionPorHoraData,
-  pending: ocupacionPorHoraPending,
-  refresh: refrescarOcupacionPorHora,
-} = useFetch('/api/analytics/occupancy-by-hour', {
-  query: computed(() => ({
-    periodo: periodo.value,
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
-  })),
-  watch: [periodo, cargadorSeleccionado],
-  lazy: true,
-});
-
-const {
-  data:    ocupacionPorDiaData,
-  pending: ocupacionPorDiaPending,
-  refresh: refrescarOcupacionPorDia,
-} = useFetch('/api/analytics/occupancy-by-day', {
-  query: computed(() => ({
-    periodo: periodo.value,
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
-  })),
-  watch: [periodo, cargadorSeleccionado],
+  query: computed(() => ({ periodo: periodo.value })),
+  watch: [periodo],
   lazy: true,
 });
 
@@ -440,10 +394,6 @@ const {
   pending: recomendacionesPending,
   refresh: refrescarRecomendaciones,
 } = useFetch('/api/analytics/recommendations', {
-  query: computed(() => ({
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
-  })),
-  watch: [cargadorSeleccionado],
   lazy: true,
 });
 
@@ -467,9 +417,8 @@ const {
 } = useFetch('/api/analytics/metrics', {
   query: computed(() => ({
     periodo: periodo.value,
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
   })),
-  watch: [periodo, cargadorSeleccionado],
+  watch: [periodo],
   lazy: true,
 });
 
@@ -482,9 +431,8 @@ const {
 } = useFetch('/api/analytics/diagnostic', {
   query: computed(() => ({
     periodo: periodo.value,
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
   })),
-  watch: [periodo, cargadorSeleccionado],
+  watch: [periodo],
   lazy: true,
 });
 
@@ -496,9 +444,8 @@ const {
   query: computed(() => ({
     minutes: etaMinutes.value,
     periodo: 'all',
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
   })),
-  watch: [etaMinutes, cargadorSeleccionado],
+  watch: [etaMinutes],
   lazy: true,
 });
 
@@ -515,10 +462,7 @@ async function refrescarTodo() {
     refrescarPrediccion(),
     refrescarEta(),
     refrescarDuracionOcupacion(),
-    refrescarEstimacionLiberacion(),
     refrescarSaludCargadores(),
-    refrescarOcupacionPorHora(),
-    refrescarOcupacionPorDia(),
     refrescarAnomalias(),
     refrescarRecomendaciones(),
     refrescarRankings(),
@@ -527,7 +471,6 @@ async function refrescarTodo() {
 
   trackAction('manual_refresh', {
     active_tab: activeTab.value,
-    station_filter: cargadorSeleccionado.value,
     period: periodo.value,
   });
 }
@@ -553,10 +496,7 @@ async function pollingInteligente() {
         refrescarPrediccion(),
         refrescarEta(),
         refrescarDuracionOcupacion(),
-        refrescarEstimacionLiberacion(),
         refrescarSaludCargadores(),
-        refrescarOcupacionPorHora(),
-        refrescarOcupacionPorDia(),
         refrescarAnomalias(),
         refrescarRecomendaciones(),
         refrescarRankings(),
@@ -598,11 +538,7 @@ onBeforeUnmount(() => {
 
 // ─── Datos derivados ─────────────────────────────────────────────────────────
 const cargadores   = computed(() => cargadoresData.value?.cargadores ?? []);
-const cargadoresFiltrados = computed(() =>
-  cargadorSeleccionado.value === 'all'
-    ? cargadores.value
-    : cargadores.value.filter((c: any) => c.station_id === cargadorSeleccionado.value)
-);
+const cargadoresFiltrados = computed(() => cargadores.value);
 const ultimaActualizacion = computed(() => cargadoresData.value?.ultimaActualizacion ?? '');
 const ultimoEstadoProveedor = computed(() => cargadoresData.value?.ultimoEstadoProveedor ?? '');
 const opcionesCargador = computed<OpcionCargador[]>(() => {
@@ -699,8 +635,7 @@ const estacionRecomendadaDetalle = computed(() => {
 const activeTabTheme = computed<DashboardTabTheme>(() => TAB_THEMES[activeTab.value]);
 const isResumenOrMapa = computed<boolean>(() => activeTab.value === 'resumen' || activeTab.value === 'mapa');
 const muestraFiltroPeriodo = computed<boolean>(() => !isResumenOrMapa.value);
-const barrasOcupacionHora = computed(() => ocupacionPorHoraData.value?.points ?? []);
-const barrasOcupacionDia = computed(() => ocupacionPorDiaData.value?.points ?? []);
+
 const saludTop = computed(() => saludCargadoresData.value?.porEstacion?.slice(0, 5) ?? []);
 const recomendacionesTop = computed(() => recomendacionesData.value?.recommendations ?? []);
 const anomaliasTop = computed(() => anomaliasData.value?.anomalies?.slice(0, 6) ?? []);
@@ -1222,29 +1157,10 @@ if (!props.disableSeo) {
       >
         <div class="mb-3 flex flex-wrap items-center gap-2">
           <FilterButtons v-if="muestraFiltroPeriodo" v-model="periodo" />
-          <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
-            Cargador
-            <select
-              v-model="cargadorSeleccionado"
-              class="max-w-[240px] rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 outline-none"
-            >
-              <option value="all">Todos</option>
-              <option
-                v-for="op in opcionesCargador"
-                :key="op.id"
-                :value="op.id"
-              >
-                {{ op.id }} · {{ op.nombre }}
-              </option>
-            </select>
-          </label>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
           <span class="inline-flex items-center rounded-full px-2.5 py-1 ring-1" :class="activeTabTheme.badge">
             Vista: {{ activeTabLabel }}
-          </span>
-          <span class="inline-flex items-center rounded-full bg-slate-900/80 px-2.5 py-1 text-slate-300 ring-1 ring-slate-700/80">
-            Filtro: {{ cargadorSeleccionadoLabel }}
           </span>
         </div>
       </section>
@@ -1488,21 +1404,7 @@ if (!props.disableSeo) {
             />
 
             <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-1">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Tiempo estimado de liberación</h3>
-                <div v-if="estimacionLiberacionPending" class="mt-3 h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
-                <div v-else class="mt-3 space-y-2">
-                  <p class="text-sm text-slate-300">{{ estimacionLiberacionData?.location_name ?? 'Sin cargador seleccionado' }}</p>
-                  <p class="text-3xl font-bold" :class="(estimacionLiberacionData?.estimatedMinutesUntilFree ?? 0) <= 0 ? 'text-emerald-400' : 'text-amber-300'">
-                    {{ estimacionLiberacionData?.estimatedMinutesUntilFree ?? 0 }} min
-                  </p>
-                  <p class="text-xs text-slate-500">
-                    Método: {{ estimacionLiberacionData?.metodo ?? 'sin_datos' }} · confianza {{ estimacionLiberacionData?.confianza ?? 'baja' }}
-                  </p>
-                </div>
-              </section>
-
-              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
                 <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Duración media de ocupación</h3>
                 <div v-if="duracionOcupacionPending" class="mt-3 h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
                 <div v-else class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1517,40 +1419,6 @@ if (!props.disableSeo) {
                   <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
                     <p class="text-xs text-slate-500">P90</p>
                     <p class="text-2xl font-bold text-white">{{ duracionOcupacionData?.p90Min ?? 0 }} min</p>
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Ocupación por hora</h3>
-                <div v-if="ocupacionPorHoraPending" class="mt-3 h-28 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
-                <div v-else class="mt-3 flex h-24 items-end gap-1">
-                  <div
-                    v-for="point in barrasOcupacionHora"
-                    :key="`occ-hour-${point.hour}`"
-                    class="group relative flex-1"
-                    :title="`${point.hour}h · ${point.occupancyPct}%`"
-                  >
-                    <div class="w-full rounded-t-sm bg-cyan-400/80" :style="{ height: `${Math.max(3, point.occupancyPct)}%` }" />
-                    <span v-if="point.hour % 6 === 0" class="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[9px] text-slate-500">{{ point.hour }}</span>
-                  </div>
-                </div>
-              </section>
-
-              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Ocupación por día</h3>
-                <div v-if="ocupacionPorDiaPending" class="mt-3 h-28 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
-                <div v-else class="mt-3 space-y-2">
-                  <div v-for="point in barrasOcupacionDia" :key="`occ-day-${point.dayIndex}`" class="space-y-1">
-                    <div class="flex items-center justify-between text-xs text-slate-400">
-                      <span>{{ point.dayLabel }}</span>
-                      <span>{{ point.occupancyPct }}%</span>
-                    </div>
-                    <div class="h-2 rounded-full bg-slate-800">
-                      <div class="h-full rounded-full bg-amber-400" :style="{ width: `${point.occupancyPct}%` }" />
-                    </div>
                   </div>
                 </div>
               </section>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Zap, CheckCircle, XCircle, Clock } from 'lucide-vue-next';
+import { Zap, CheckCircle, XCircle, Clock, BarChart2 } from 'lucide-vue-next';
 
 interface ConnectorDetail {
   type: string;
@@ -212,6 +212,15 @@ const potenciaTexto = computed(() => {
           Proveedor {{ horaEstadoProveedor }}
         </div>
       </div>
+
+      <!-- Botón ficha individual -->
+      <NuxtLink
+        :to="`/charger/${stationId}`"
+        class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700/60 bg-slate-800/60 px-3 py-2 text-[11px] font-medium text-slate-300 transition-all hover:border-slate-600 hover:bg-slate-700/60 hover:text-white"
+      >
+        <BarChart2 class="h-3.5 w-3.5" />
+        Ver análisis
+      </NuxtLink>
     </div>
   </div>
 </template>
