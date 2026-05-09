@@ -1,16 +1,8 @@
 /**
  * GET /api/analytics/prediction
  *
- * Analiza los últimos 30 días de datos históricos para el día de la semana actual
- * y devuelve la hora con mayor probabilidad de encontrar cargador libre.
- *
- * Respuesta:
- * {
- *   mejorHora: 10,
- *   probabilidad: 87,
- *   diaSemana: "Lunes",
- *   franjas: [ { hora: 0, disponibilidad: 45 }, … ]
- * }
+ * Analiza la ventana histórica completa y calcula la mejor hora agregada
+ * por hora del día (00-23), sin restringir por día de la semana.
  */
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
@@ -65,10 +57,11 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  // ─── Agrupar por hora para el día objetivo (hoy + X días) ──────────────
+  // ─── Agrupar por hora para el día objetivo (fecha seleccionada) ─────────
   const porHora: Record<number, { total: number; disponibles: number }> = {};
-  const diasConDatosSet = new Set<string>();
   const diasHistoricosConDatosSet = new Set<string>();
+  const diasConDatosPorDiaSemana: Array<Set<string>> = Array.from({ length: 7 }, () => new Set<string>());
+  const muestrasPorDiaSemana = Array.from({ length: 7 }, () => 0);
 
   for (let h = 0; h < 24; h++) {
     porHora[h] = { total: 0, disponibles: 0 };
@@ -76,14 +69,17 @@ export default defineEventHandler(async (event) => {
 
   for (const fila of data ?? []) {
     const fecha = new Date(fila.created_at);
-    diasHistoricosConDatosSet.add(toISODate(fecha));
+    const diaSemana = fecha.getDay();
 
-    if (fecha.getDay() !== diaObjetivo) continue;
+    diasHistoricosConDatosSet.add(toISODate(fecha));
+    diasConDatosPorDiaSemana[diaSemana].add(toISODate(fecha));
+    muestrasPorDiaSemana[diaSemana]++;
+
+    if (diaSemana !== diaObjetivo) continue;
 
     const hora = fecha.getHours();
     porHora[hora].total++;
     if (fila.is_available) porHora[hora].disponibles++;
-    diasConDatosSet.add(toISODate(fecha));
   }
 
   // ─── Calcular disponibilidad (%) por hora ──────────────────────────────
@@ -99,8 +95,8 @@ export default defineEventHandler(async (event) => {
 
   // ─── Elegir la mejor hora (máxima disponibilidad con suficientes datos) ─
   const franjasConDatos = franjas.filter((f) => f.conDatos);
-  const diasConDatos = diasConDatosSet.size;
   const diasHistoricosConDatos = diasHistoricosConDatosSet.size;
+  const diasConDatos = diasConDatosPorDiaSemana[diaObjetivo].size;
   const muestrasTotales = franjas.reduce((acc, f) => acc + f.muestras, 0);
   const haySuficientesDatos =
     franjasConDatos.length > 0 &&
@@ -113,10 +109,27 @@ export default defineEventHandler(async (event) => {
   // ─── Horas recomendables (disponibilidad ≥ 70 %) ────────────────────────
   const horasRecomendadas = haySuficientesDatos
     ? franjasConDatos
-    .filter((f) => f.disponibilidad >= 70)
-    .map((f) => f.hora)
-    .sort((a, b) => a - b)
+      .filter((f) => f.disponibilidad >= 70)
+      .map((f) => f.hora)
+      .sort((a, b) => a - b)
     : [];
+
+  const diasDisponibles = Array.from({ length: 31 }, (_, dias) => {
+    const fecha = new Date(ahora.getTime() + dias * 24 * 60 * 60 * 1000);
+    const diaSemana = fecha.getDay();
+    const diasConDatosDia = diasConDatosPorDiaSemana[diaSemana].size;
+    const muestrasDia = muestrasPorDiaSemana[diaSemana];
+    const disponible = diasConDatosDia >= MIN_DIAS_CON_DATOS || muestrasDia >= MIN_MUESTRAS_TOTALES;
+
+    return {
+      dias,
+      fecha: toISODate(fecha),
+      diaSemana: DIAS_ES[diaSemana],
+      diasConDatos: diasConDatosDia,
+      muestras: muestrasDia,
+      disponible,
+    };
+  }).filter((item) => item.disponible);
 
   return {
     mejorHora: mejorFranja.hora,
@@ -130,6 +143,7 @@ export default defineEventHandler(async (event) => {
     diasConDatos,
     diasHistoricosConDatos,
     muestrasTotales,
+    diasDisponibles,
     diasMinimosRecomendados: 28,
     diasFaltantesEstimados: Math.max(0, 28 - diasHistoricosConDatos),
     ventanaHistoricaDias: VENTANA_HISTORICA_DIAS,

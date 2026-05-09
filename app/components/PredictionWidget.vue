@@ -55,6 +55,13 @@ const colorConfianza = computed(() => {
   if (props.probabilidad >= 60) return 'text-amber-400';
   return 'text-rose-400';
 });
+
+const contextoMomento = computed(() => {
+  const dias = props.diasHaciaFuturo ?? 0;
+  if (dias <= 0) return 'hoy';
+  if (dias === 1) return 'mañana';
+  return `en ${dias} días`;
+});
 </script>
 
 <template>
@@ -96,7 +103,7 @@ const colorConfianza = computed(() => {
                border border-blue-500/20 bg-blue-500/10 px-4 py-3"
       >
         <div>
-          <p class="text-xs text-slate-400">Mejor momento para cargar hoy</p>
+          <p class="text-xs text-slate-400">Mejor momento para cargar {{ contextoMomento }}</p>
           <p class="mt-0.5 text-2xl font-bold text-white">
             {{ formatHora(mejorHora) }}
           </p>

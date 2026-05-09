@@ -353,9 +353,8 @@ const {
 } = useFetch('/api/analytics/prediction', {
   query: computed(() => ({
     dias: diasPrediccion.value,
-    station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
   })),
-  watch: [diasPrediccion, cargadorSeleccionado],
+  watch: [diasPrediccion],
   lazy: true,
 });
 
@@ -525,6 +524,22 @@ const cargadorSeleccionadoLabel = computed(() => {
   if (cargadorSeleccionado.value === 'all') return 'Todos los cargadores';
   const found = opcionesCargador.value.find((op: OpcionCargador) => op.id === cargadorSeleccionado.value);
   return found ? `${found.id} · ${found.nombre}` : cargadorSeleccionado.value;
+});
+
+const opcionesPronosticoFecha = computed<Array<{ dias: number; fecha: string; diaSemana: string }>>(
+  () => prediccionData.value?.diasDisponibles ?? [],
+);
+
+function etiquetaPronosticoFecha(opcion: { dias: number; fecha: string; diaSemana: string }): string {
+  if (opcion.dias === 0) return `Hoy (${opcion.fecha})`;
+  if (opcion.dias === 1) return `Mañana (${opcion.fecha})`;
+  return `${opcion.diaSemana} · ${opcion.fecha}`;
+}
+
+watch(opcionesPronosticoFecha, (opciones) => {
+  if (!opciones.length) return;
+  const existe = opciones.some((opcion) => opcion.dias === diasPrediccion.value);
+  if (!existe) diasPrediccion.value = opciones[0].dias as HorizontePrediccion;
 });
 
 const cargadorSeleccionadoDetalle = computed(() => {
@@ -1290,17 +1305,21 @@ if (!props.disableSeo) {
                 Inteligencia y analítica
               </h2>
               <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
-                IA en
+                Fecha pronóstico
                 <select
                   v-model.number="diasPrediccion"
                   class="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 outline-none"
                 >
-                  <option :value="0">hoy</option>
-                  <option :value="1">1 día</option>
-                  <option :value="2">2 días</option>
-                  <option :value="3">3 días</option>
-                  <option :value="7">7 días</option>
-                  <option :value="14">14 días</option>
+                  <option v-if="!opcionesPronosticoFecha.length" :value="diasPrediccion" disabled>
+                    Sin fechas disponibles
+                  </option>
+                  <option
+                    v-for="opcion in opcionesPronosticoFecha"
+                    :key="`pred-fecha-${opcion.fecha}`"
+                    :value="opcion.dias"
+                  >
+                    {{ etiquetaPronosticoFecha(opcion) }}
+                  </option>
                 </select>
               </label>
             </div>
