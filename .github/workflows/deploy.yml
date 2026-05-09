@@ -2,7 +2,7 @@ name: Deploy
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-  VERCEL_CLI_VERSION: '53.3.0'
+  VERCEL_CLI_VERSION: '39.4.2'
 
 on:
   push:
