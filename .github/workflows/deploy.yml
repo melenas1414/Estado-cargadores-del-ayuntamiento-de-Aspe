@@ -71,6 +71,36 @@ jobs:
           npm install --global vercel@${VERCEL_CLI_VERSION}
           vercel --version
 
+      - name: ⚙️ Forzar Node.js 22 en Vercel
+        run: |
+          set -euo pipefail
+
+          BODY='{"nodeVersion":"22.x"}'
+
+          STATUS=$(curl -sS -o /tmp/vercel-project-update.json -w "%{http_code}" \
+            -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}?teamId=${VERCEL_ORG_ID}" \
+            -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data "$BODY")
+
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "Fallo PATCH con teamId (HTTP $STATUS), reintentando sin teamId..."
+
+            STATUS=$(curl -sS -o /tmp/vercel-project-update.json -w "%{http_code}" \
+              -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}" \
+              -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
+              -H "Content-Type: application/json" \
+              --data "$BODY")
+          fi
+
+          echo "HTTP update project: $STATUS"
+          cat /tmp/vercel-project-update.json
+
+          if [ "$STATUS" -lt 200 ] || [ "$STATUS" -ge 300 ]; then
+            echo "::error::No se pudo forzar nodeVersion=22.x en Vercel"
+            exit 1
+          fi
+
       - name: 🔗 Sincronizar configuración de Vercel
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         env:
