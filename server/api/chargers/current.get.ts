@@ -39,9 +39,13 @@ export default defineEventHandler(async (event) => {
       }, null)
     : null;
 
+  // Si el proveedor no envia timestamp dinamico, usamos la hora de muestra
+  // para evitar cabeceras vacias en frontend.
+  const ultimoEstadoProveedorSafe = ultimoEstadoProveedor || ultimaActualizacion;
+
   return {
     cargadores,
     ultimaActualizacion,
-    ultimoEstadoProveedor,
+    ultimoEstadoProveedor: ultimoEstadoProveedorSafe,
   };
 });

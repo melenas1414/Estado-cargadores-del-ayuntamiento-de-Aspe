@@ -395,6 +395,7 @@ const {
 } = useFetch('/api/analytics/eta', {
   query: computed(() => ({
     minutes: etaMinutes.value,
+    periodo: 'all',
     station_id: cargadorSeleccionado.value === 'all' ? undefined : cargadorSeleccionado.value,
   })),
   watch: [etaMinutes, cargadorSeleccionado],
@@ -564,6 +565,9 @@ const estacionRecomendadaDetalle = computed(() => {
 });
 
 const activeTabTheme = computed<DashboardTabTheme>(() => TAB_THEMES[activeTab.value]);
+const isResumenOrMapa = computed<boolean>(() => activeTab.value === 'resumen' || activeTab.value === 'mapa');
+const muestraFiltroPeriodo = computed<boolean>(() => !isResumenOrMapa.value);
+const muestraFiltroIA = computed<boolean>(() => activeTab.value === 'inteligencia');
 const activeTabLabel = computed<string>(() => {
   const found = DASHBOARD_TABS.find((tab) => tab.id === activeTab.value);
   return found?.label ?? 'Resumen';
@@ -1080,7 +1084,7 @@ if (!props.disableSeo) {
         :class="[activeTabTheme.panel, `ring-1 ${activeTabTheme.panelRing}`]"
       >
         <div class="mb-3 flex flex-wrap items-center gap-2">
-          <FilterButtons v-model="periodo" />
+          <FilterButtons v-if="muestraFiltroPeriodo" v-model="periodo" />
           <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
             Cargador
             <select
@@ -1097,7 +1101,7 @@ if (!props.disableSeo) {
               </option>
             </select>
           </label>
-          <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
+          <label v-if="muestraFiltroIA" class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
             IA en
             <select
               v-model.number="diasPrediccion"

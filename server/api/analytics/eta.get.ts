@@ -1,7 +1,12 @@
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
 
-const VENTANA_DIAS = 56;
+const DIAS_POR_PERIODO: Record<string, number | null> = {
+  today: 1,
+  '7d': 7,
+  '30d': 30,
+  all: null,
+};
 
 type Row = {
   station_id: string;
@@ -24,19 +29,33 @@ function parseStationId(raw: unknown): string | null {
   return stationId;
 }
 
+function parsePeriodo(raw: unknown): number | null {
+  const periodo = String(raw ?? 'all');
+  if (!Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)) {
+    return DIAS_POR_PERIODO.all;
+  }
+  return DIAS_POR_PERIODO[periodo];
+}
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const minutes = parseMinutes(query.minutes);
+  const dias = parsePeriodo(query.periodo);
   const stationId = parseStationId(query.station_id ?? query.stationId);
 
   const supabase = await serverSupabaseClient(event);
-  const since = new Date(Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000);
+  const since = dias === null
+    ? null
+    : new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
 
   let queryLogs = supabase
     .from('charging_logs')
     .select('station_id, location_name, created_at, is_available, available_connectors, total_connectors')
-    .gte('created_at', since.toISOString())
     .order('created_at', { ascending: true });
+
+  if (since) {
+    queryLogs = queryLogs.gte('created_at', since.toISOString());
+  }
 
   if (stationId) {
     queryLogs = queryLogs.eq('station_id', stationId);

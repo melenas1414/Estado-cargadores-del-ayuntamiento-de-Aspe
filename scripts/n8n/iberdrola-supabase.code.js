@@ -301,6 +301,53 @@ function socketIsOutOfService(statusCode) {
   );
 }
 
+function extractLatestProviderTimestamp(listItem, detailItem, logicalSockets) {
+  const socketCandidates = logicalSockets.flatMap((socket) => [
+    socket?.status?.updateDate,
+    socket?.status?.updateDatetime,
+    socket?.status?.date,
+    socket?.status?.lastUpdate,
+    socket?.updateDate,
+    socket?.updateDatetime,
+  ]);
+
+  const candidates = [
+    detailItem?.cpStatus?.updateDate,
+    detailItem?.cpStatus?.updateDatetime,
+    detailItem?.cpStatus?.date,
+    detailItem?.cpStatus?.statusDate,
+    detailItem?.cpStatus?.lastUpdate,
+    detailItem?.status?.updateDate,
+    detailItem?.status?.updateDatetime,
+    detailItem?.status?.date,
+    detailItem?.status?.lastUpdate,
+    detailItem?.updateDate,
+    detailItem?.updateDatetime,
+    detailItem?.lastUpdate,
+    detailItem?.lastUpdatedAt,
+    listItem?.cpStatus?.updateDate,
+    listItem?.cpStatus?.updateDatetime,
+    listItem?.cpStatus?.date,
+    listItem?.status?.updateDate,
+    listItem?.status?.updateDatetime,
+    listItem?.status?.date,
+    listItem?.updateDate,
+    listItem?.updateDatetime,
+    listItem?.lastUpdate,
+    ...socketCandidates,
+  ];
+
+  const latest = candidates
+    .filter(Boolean)
+    .map((value) => toIso(value))
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
+  // Fallback operativo: evita dejar vacio el campo cuando Iberdrola omite updateDate.
+  return latest || new Date().toISOString();
+}
+
 function buildRow(listItem, detailItem) {
   const address = extractAddress(detailItem) || extractAddress(listItem);
   const known =
@@ -327,13 +374,10 @@ function buildRow(listItem, detailItem) {
     return sum + (socketIsOutOfService(statusCode) ? 1 : 0);
   }, 0);
 
-  const updateCandidates = [
-    detailItem?.cpStatus?.updateDate,
-    ...logicalSockets.map((s) => s?.status?.updateDate),
-  ];
-
-  const availabilityUpdatedAt = toIso(
-    updateCandidates.filter(Boolean).sort().at(-1) || null,
+  const availabilityUpdatedAt = extractLatestProviderTimestamp(
+    listItem,
+    detailItem,
+    logicalSockets,
   );
 
   const maxPowers = logicalSockets
