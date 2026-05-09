@@ -23,6 +23,7 @@ const props = defineProps<{
   horasRecomendadas:    number[];
   haySuficientesDatos:  boolean;
   diasConDatos?:        number;
+  diasHistoricosConDatos?: number;
   muestrasTotales?:     number;
   diasMinimosRecomendados?: number;
   diasFaltantesEstimados?: number;
@@ -84,7 +85,7 @@ const colorConfianza = computed(() => {
         </span>
       </p>
       <p class="text-[11px] text-slate-600">
-        {{ diasConDatos ?? 0 }} días equivalentes con datos · {{ muestrasTotales ?? 0 }} muestras analizadas
+        {{ diasHistoricosConDatos ?? 0 }} días históricos con datos · {{ muestrasTotales ?? 0 }} muestras analizadas
       </p>
     </div>
 

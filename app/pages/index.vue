@@ -567,7 +567,6 @@ const estacionRecomendadaDetalle = computed(() => {
 const activeTabTheme = computed<DashboardTabTheme>(() => TAB_THEMES[activeTab.value]);
 const isResumenOrMapa = computed<boolean>(() => activeTab.value === 'resumen' || activeTab.value === 'mapa');
 const muestraFiltroPeriodo = computed<boolean>(() => !isResumenOrMapa.value);
-const muestraFiltroIA = computed<boolean>(() => activeTab.value === 'inteligencia');
 const activeTabLabel = computed<string>(() => {
   const found = DASHBOARD_TABS.find((tab) => tab.id === activeTab.value);
   return found?.label ?? 'Resumen';
@@ -1101,20 +1100,6 @@ if (!props.disableSeo) {
               </option>
             </select>
           </label>
-          <label v-if="muestraFiltroIA" class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
-            IA en
-            <select
-              v-model.number="diasPrediccion"
-              class="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 outline-none"
-            >
-              <option :value="0">hoy</option>
-              <option :value="1">1 día</option>
-              <option :value="2">2 días</option>
-              <option :value="3">3 días</option>
-              <option :value="7">7 días</option>
-              <option :value="14">14 días</option>
-            </select>
-          </label>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
           <span class="inline-flex items-center rounded-full px-2.5 py-1 ring-1" :class="activeTabTheme.badge">
@@ -1300,9 +1285,25 @@ if (!props.disableSeo) {
 
           <!-- ════════ TAB: INTELIGENCIA ════════ -->
           <section v-else-if="activeTab === 'inteligencia'" aria-labelledby="tab-inteligencia" class="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5">
-            <h2 id="tab-inteligencia" class="mb-4 text-xs font-semibold uppercase tracking-wider" :class="activeTabTheme.title">
-              Inteligencia y analítica
-            </h2>
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 id="tab-inteligencia" class="text-xs font-semibold uppercase tracking-wider" :class="activeTabTheme.title">
+                Inteligencia y analítica
+              </h2>
+              <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
+                IA en
+                <select
+                  v-model.number="diasPrediccion"
+                  class="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 outline-none"
+                >
+                  <option :value="0">hoy</option>
+                  <option :value="1">1 día</option>
+                  <option :value="2">2 días</option>
+                  <option :value="3">3 días</option>
+                  <option :value="7">7 días</option>
+                  <option :value="14">14 días</option>
+                </select>
+              </label>
+            </div>
 
             <div class="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div v-if="heatmapPending" class="h-72 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
@@ -1323,6 +1324,7 @@ if (!props.disableSeo) {
                 :horas-recomendadas="prediccionData.horasRecomendadas"
                 :hay-suficientes-datos="prediccionData.haySuficientesDatos"
                 :dias-con-datos="prediccionData.diasConDatos"
+                :dias-historicos-con-datos="prediccionData.diasHistoricosConDatos"
                 :muestras-totales="prediccionData.muestrasTotales"
                 :dias-minimos-recomendados="prediccionData.diasMinimosRecomendados"
                 :dias-faltantes-estimados="prediccionData.diasFaltantesEstimados"
