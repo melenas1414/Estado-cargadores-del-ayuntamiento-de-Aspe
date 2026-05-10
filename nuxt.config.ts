@@ -1,7 +1,13 @@
 // nuxt.config.ts — Configuración principal para Nuxt 4 + Supabase + Tailwind CSS
 // https://nuxt.com/docs/api/configuration/nuxt-config
 
+import { resolve } from 'pathe';
+
 export default defineNuxtConfig({
+    alias: {
+      '~/components': resolve(__dirname, 'app/components'),
+      '#imports': resolve(__dirname, '.nuxt/imports'),
+    },
   // ─── Compatibilidad Nuxt 4 ────────────────────────────────────────────────
   future: {
     compatibilityVersion: 4,

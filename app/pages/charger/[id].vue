@@ -1,77 +1,85 @@
+//
+
 <script setup lang="ts">
+import { ref, computed } from 'vue';
+import { useRoute, useFetch, useRuntimeConfig, useSeoMeta, useHead } from '#imports';
+import FilterButtons from '~/components/FilterButtons.vue';
 import WeeklyHeatmap from '~/components/WeeklyHeatmap.vue';
+
+const periodo = ref('7d');
 
 const route = useRoute();
 const stationId = computed(() => String(route.params.id ?? '').trim());
 
 const { data: healthData, pending: healthPending } = useFetch('/api/analytics/charger-health', {
   query: computed(() => ({
-    periodo: '30d',
+    periodo: periodo.value,
     station_id: stationId.value,
   })),
-  watch: [stationId],
+  watch: [stationId, periodo],
   lazy: true,
 });
 
 const { data: occHourData, pending: occHourPending } = useFetch('/api/analytics/occupancy-by-hour', {
   query: computed(() => ({
-    periodo: '30d',
+    periodo: periodo.value,
     station_id: stationId.value,
   })),
-  watch: [stationId],
+  watch: [stationId, periodo],
   lazy: true,
 });
 
 const { data: occDayData, pending: occDayPending } = useFetch('/api/analytics/occupancy-by-day', {
   query: computed(() => ({
-    periodo: '30d',
+    periodo: periodo.value,
     station_id: stationId.value,
   })),
-  watch: [stationId],
+  watch: [stationId, periodo],
   lazy: true,
 });
 
 const { data: durationData, pending: durationPending } = useFetch('/api/analytics/occupation-duration', {
   query: computed(() => ({
-    dias_historico: 90,
+    dias_historico: periodo.value === 'today' ? 7 : (periodo.value === '7d' ? 30 : (periodo.value === '30d' ? 90 : 180)),
     station_id: stationId.value,
   })),
-  watch: [stationId],
+  watch: [stationId, periodo],
   lazy: true,
 });
 
 const { data: releaseData, pending: releasePending } = useFetch('/api/analytics/estimated-release', {
   query: computed(() => ({
-    dias_historico: 90,
+    dias_historico: periodo.value === 'today' ? 7 : (periodo.value === '7d' ? 30 : (periodo.value === '30d' ? 90 : 180)),
     station_id: stationId.value,
   })),
-  watch: [stationId],
+  watch: [stationId, periodo],
   lazy: true,
 });
 
 const { data: heatmapData, pending: heatmapPending } = useFetch('/api/analytics/heatmap', {
   query: computed(() => ({
-    periodo: '30d',
+    periodo: periodo.value,
     station_id: stationId.value,
   })),
-  watch: [stationId],
+  watch: [stationId, periodo],
   lazy: true,
 });
 
 const { data: recommendationsData, pending: recommendationsPending } = useFetch('/api/analytics/recommendations', {
   query: computed(() => ({
     station_id: stationId.value,
+    periodo: periodo.value,
   })),
-  watch: [stationId],
+  watch: [stationId, periodo],
   lazy: true,
 });
 
 const { data: anomaliesData, pending: anomaliesPending } = useFetch('/api/analytics/anomalies', {
   query: computed(() => ({
-    period: '30d',
+    period: periodo.value,
     station_id: stationId.value,
   })),
-  watch: [stationId],
+  watch: [stationId, periodo],
   lazy: true,
 });
 
@@ -97,6 +105,15 @@ useHead(() => ({
 <template>
   <main class="min-h-screen bg-[#020617] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
     <div class="mx-auto max-w-5xl space-y-5">
+      <div class="mb-4">
+        <NuxtLink to="/" class="inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-sm font-semibold text-slate-200 shadow hover:bg-slate-800/80 hover:text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-green-700">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M12.78 15.28a.75.75 0 01-1.06 0l-5-5a.75.75 0 010-1.06l5-5a.75.75 0 111.06 1.06L8.06 10l4.72 4.72a.75.75 0 010 1.06z" clip-rule="evenodd" /></svg>
+          Volver al global
+        </NuxtLink>
+      </div>
+      <div class="flex justify-end mb-2">
+        <FilterButtons v-model="periodo" />
+      </div>
       <header class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
         <p class="text-xs uppercase tracking-wider text-slate-400">Ficha de cargador</p>
         <h1 class="mt-1 text-2xl font-extrabold text-white sm:text-3xl">{{ stationId }}</h1>
