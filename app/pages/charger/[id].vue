@@ -41,34 +41,34 @@ const { data: durationData, pending: durationPending } = useFetch('/api/analytic
 });
 
 const { data: releaseData, pending: releasePending } = useFetch('/api/analytics/estimated-release', {
-
-  const { data: heatmapData, pending: heatmapPending } = useFetch('/api/analytics/heatmap', {
-    query: computed(() => ({
-      periodo: '30d',
-      station_id: stationId.value,
-    })),
-    watch: [stationId],
-    lazy: true,
-  });
-
-  const { data: recommendationsData, pending: recommendationsPending } = useFetch('/api/analytics/recommendations', {
-    query: computed(() => ({
-      station_id: stationId.value,
-    })),
-    watch: [stationId],
-    lazy: true,
-  });
-
-  const { data: anomaliesData, pending: anomaliesPending } = useFetch('/api/analytics/anomalies', {
-    query: computed(() => ({
-      period: '30d',
-      station_id: stationId.value,
-    })),
-    watch: [stationId],
-    lazy: true,
-  });
   query: computed(() => ({
     dias_historico: 90,
+    station_id: stationId.value,
+  })),
+  watch: [stationId],
+  lazy: true,
+});
+
+const { data: heatmapData, pending: heatmapPending } = useFetch('/api/analytics/heatmap', {
+  query: computed(() => ({
+    periodo: '30d',
+    station_id: stationId.value,
+  })),
+  watch: [stationId],
+  lazy: true,
+});
+
+const { data: recommendationsData, pending: recommendationsPending } = useFetch('/api/analytics/recommendations', {
+  query: computed(() => ({
+    station_id: stationId.value,
+  })),
+  watch: [stationId],
+  lazy: true,
+});
+
+const { data: anomaliesData, pending: anomaliesPending } = useFetch('/api/analytics/anomalies', {
+  query: computed(() => ({
+    period: '30d',
     station_id: stationId.value,
   })),
   watch: [stationId],
