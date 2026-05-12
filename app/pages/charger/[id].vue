@@ -106,10 +106,7 @@ useHead(() => ({
   <main class="min-h-screen bg-[#020617] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
     <div class="mx-auto max-w-5xl space-y-5">
       <div class="mb-4">
-        <NuxtLink to="/" class="inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-sm font-semibold text-slate-200 shadow hover:bg-slate-800/80 hover:text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-green-700">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path fill-rule="evenodd" d="M12.78 15.28a.75.75 0 01-1.06 0l-5-5a.75.75 0 010-1.06l5-5a.75.75 0 111.06 1.06L8.06 10l4.72 4.72a.75.75 0 010 1.06z" clip-rule="evenodd" /></svg>
-          Volver al global
-        </NuxtLink>
+          <!-- Removed the 'Volver al dashboard' button -->
       </div>
       <div class="flex justify-end mb-2">
         <FilterButtons v-model="periodo" />
@@ -153,12 +150,14 @@ useHead(() => ({
       <section class="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <article class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
           <h2 class="text-xs uppercase tracking-wider text-slate-400">Ocupación por hora</h2>
-          <div v-if="occHourPending" class="mt-3 h-24 animate-pulse rounded-lg bg-slate-900" />
-          <div v-else class="mt-3 flex h-24 items-end gap-1">
-            <div v-for="point in occHourData?.points ?? []" :key="`h-${point.hour}`" class="flex-1" :title="`${point.hour}h ${point.occupancyPct}%`">
-              <div class="w-full rounded-t-sm bg-cyan-400/80" :style="{ height: `${Math.max(3, point.occupancyPct)}%` }" />
+            <div v-if="occHourPending" class="mt-3 h-24 animate-pulse rounded-lg bg-slate-900" />
+            <div v-else-if="occHourData?.points?.length" class="mt-3 flex h-24 items-end gap-1">
+              <div v-for="point in occHourData.points" :key="`h-${point.hour}`" class="flex-1 group" :title="`${point.hour}h ${point.occupancyPct}%`">
+                <div class="w-full rounded-t bg-emerald-400/90 group-hover:bg-emerald-500 transition-all border border-emerald-700 shadow-md"
+                  :style="{ height: `${Math.max(3, point.occupancyPct)}%` }" />
+              </div>
             </div>
-          </div>
+            <p v-else class="mt-3 text-xs text-slate-500">Sin datos suficientes para mostrar la ocupación por hora.</p>
         </article>
 
         <article class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">

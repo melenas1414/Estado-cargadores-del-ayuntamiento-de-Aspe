@@ -132,14 +132,6 @@ const RECOMMENDED_LINKS = {
 
 type RecommendedLinksVariant = 'A' | 'B';
 type RecommendedLinksPosition = 'top' | 'bottom';
-type AbMetricKind = 'impressions' | 'clicks';
-type AbVariantMetrics = {
-  impressions: number;
-  clicks: number;
-};
-type AbRecommendedLinksMetrics = Record<RecommendedLinksVariant, AbVariantMetrics>;
-
-const AB_RECOMMENDED_LINKS_STORAGE_KEY = 'ab_recommended_links_metrics_v1';
 
 const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
   ESIBE22E0001001: { lat: 38.341118679046346, lon: -0.7654778230267333 },
@@ -192,113 +184,11 @@ const recommendedLinksPosition = computed<RecommendedLinksPosition>(() => {
   return recommendedLinksVariant.value === 'B' ? 'top' : 'bottom';
 });
 const lastRecommendedImpressionPath = ref('');
-const abRecommendedLinksMetrics = ref<AbRecommendedLinksMetrics>({
-  A: { impressions: 0, clicks: 0 },
-  B: { impressions: 0, clicks: 0 },
-});
-
-function createEmptyAbMetrics(): AbRecommendedLinksMetrics {
-  return {
-    A: { impressions: 0, clicks: 0 },
-    B: { impressions: 0, clicks: 0 },
-  };
-}
-
-function loadAbMetricsFromStorage(): void {
-  if (!import.meta.client) return;
-
-  try {
-    const raw = window.localStorage.getItem(AB_RECOMMENDED_LINKS_STORAGE_KEY);
-    if (!raw) return;
-
-    const parsed = JSON.parse(raw) as Partial<AbRecommendedLinksMetrics>;
-    if (!parsed || typeof parsed !== 'object') return;
-
-    const next = createEmptyAbMetrics();
-
-    for (const variant of ['A', 'B'] as const) {
-      const data = parsed[variant];
-      if (!data || typeof data !== 'object') continue;
-
-      const impressions = Number((data as Partial<AbVariantMetrics>).impressions ?? 0);
-      const clicks = Number((data as Partial<AbVariantMetrics>).clicks ?? 0);
-
-      next[variant] = {
-        impressions: Number.isFinite(impressions) && impressions > 0 ? Math.floor(impressions) : 0,
-        clicks: Number.isFinite(clicks) && clicks > 0 ? Math.floor(clicks) : 0,
-      };
-    }
-
-    abRecommendedLinksMetrics.value = next;
-  } catch {
-    // no-op
-  }
-}
-
-function saveAbMetricsToStorage(): void {
-  if (!import.meta.client) return;
-
-  try {
-    window.localStorage.setItem(
-      AB_RECOMMENDED_LINKS_STORAGE_KEY,
-      JSON.stringify(abRecommendedLinksMetrics.value),
-    );
-  } catch {
-    // no-op
-  }
-}
-
-function incrementAbMetric(kind: AbMetricKind, variant: RecommendedLinksVariant): void {
-  const current = abRecommendedLinksMetrics.value[variant][kind] ?? 0;
-  abRecommendedLinksMetrics.value[variant][kind] = current + 1;
-  saveAbMetricsToStorage();
-}
-
-const abMetricsSummary = computed(() => {
-  const data = abRecommendedLinksMetrics.value;
-
-  const variantA = {
-    impressions: data.A.impressions,
-    clicks: data.A.clicks,
-    ctr: data.A.impressions > 0 ? (data.A.clicks / data.A.impressions) * 100 : 0,
-    position: 'bottom' as const,
-  };
-
-  const variantB = {
-    impressions: data.B.impressions,
-    clicks: data.B.clicks,
-    ctr: data.B.impressions > 0 ? (data.B.clicks / data.B.impressions) * 100 : 0,
-    position: 'top' as const,
-  };
-
-  return {
-    A: variantA,
-    B: variantB,
-    totalImpressions: variantA.impressions + variantB.impressions,
-    totalClicks: variantA.clicks + variantB.clicks,
-  };
-});
-
-const abWinnerVariant = computed<RecommendedLinksVariant | null>(() => {
-  const { A, B } = abMetricsSummary.value;
-
-  if (A.impressions === 0 && B.impressions === 0) return null;
-  if (A.impressions === 0) return 'B';
-  if (B.impressions === 0) return 'A';
-  if (Math.abs(A.ctr - B.ctr) < 0.001) return null;
-
-  return A.ctr > B.ctr ? 'A' : 'B';
-});
-
-function formatCtr(value: number): string {
-  return `${value.toFixed(1)}%`;
-}
 
 function trackRecommendedLinksImpression(reason: 'mount' | 'route_change', path: string): void {
   if (lastRecommendedImpressionPath.value === path) return;
 
   lastRecommendedImpressionPath.value = path;
-  incrementAbMetric('impressions', recommendedLinksVariant.value);
   trackAction('recommended_links_impression', {
     reason,
     path,
@@ -508,24 +398,7 @@ async function pollingInteligente() {
 }
 
 onMounted(() => {
-  loadAbMetricsFromStorage();
   trackRecommendedLinksImpression('mount', route.path);
-
-  // Enviar resumen A/B acumulado a GA4
-  nextTick(() => {
-    const { A, B } = abMetricsSummary.value;
-    trackAction('ab_recommended_links_summary', {
-      variant_assigned: recommendedLinksVariant.value,
-      position: recommendedLinksPosition.value,
-      a_impressions: A.impressions,
-      a_clicks: A.clicks,
-      a_ctr: parseFloat(A.ctr.toFixed(2)),
-      b_impressions: B.impressions,
-      b_clicks: B.clicks,
-      b_ctr: parseFloat(B.ctr.toFixed(2)),
-      winner: abWinnerVariant.value ?? 'none',
-    });
-  });
 
   intervaloRefresco = setInterval(() => {
     pollingInteligente();
@@ -657,7 +530,6 @@ function onTabClick(tabId: DashboardTab): void {
 }
 
 function onRecommendedLinkClick(linkKey: 'tariff_comparator' | 'tesla_referral', position: RecommendedLinksPosition): void {
-  incrementAbMetric('clicks', recommendedLinksVariant.value);
   trackAction('recommended_link_click', {
     link: linkKey,
     position,
@@ -1011,6 +883,9 @@ if (!props.disableSeo) {
 </script>
 
 <template>
+  <!-- Tesla M3 Popup -->
+  <TeslaM3Popup />
+
   <main class="min-h-screen bg-[radial-gradient(1200px_600px_at_10%_-10%,rgba(16,185,129,0.08),transparent),radial-gradient(1000px_500px_at_90%_-5%,rgba(34,211,238,0.08),transparent),#020617] px-4 py-6 sm:px-6 lg:px-8">
     <div class="mx-auto max-w-6xl space-y-8">
 

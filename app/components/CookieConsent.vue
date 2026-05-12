@@ -8,7 +8,7 @@ const runtimeConfig = useRuntimeConfig();
 const gaId = String(runtimeConfig.public.googleAnalyticsId || '').trim();
 
 const consent = ref<ConsentValue | null>(null);
-const showBanner = ref(false);
+const userRejected = ref(false);
 
 function ensureGtagStub() {
   if (typeof window === 'undefined') return;
@@ -113,14 +113,13 @@ function saveConsent(value: ConsentValue) {
 
 function acceptCookies() {
   saveConsent('accepted');
-  showBanner.value = false;
+  userRejected.value = false;
   loadGoogleAnalytics();
   gtagConsentUpdate(true);
 }
 
 function rejectCookies() {
-  saveConsent('rejected');
-  showBanner.value = false;
+  userRejected.value = true;
   gtagConsentUpdate(false);
   clearAnalyticsCookies();
 }
@@ -133,62 +132,120 @@ onMounted(() => {
   loadGoogleAnalytics();
 
   const stored = localStorage.getItem(CONSENT_KEY);
-  if (stored === 'accepted' || stored === 'rejected') {
-    consent.value = stored;
-    if (stored === 'accepted') {
-      gtagConsentUpdate(true);
-    } else {
-      gtagConsentUpdate(false);
-      clearAnalyticsCookies();
-    }
+  if (stored === 'accepted') {
+    consent.value = 'accepted';
+    gtagConsentUpdate(true);
   } else {
-    showBanner.value = true;
+    consent.value = null;
+    gtagConsentUpdate(false);
+    clearAnalyticsCookies();
   }
 });
 </script>
 
 <template>
   <div>
-    <button
-      class="fixed bottom-4 left-4 z-50 rounded-full border border-slate-700 bg-slate-900/95 px-4 py-2 text-xs font-semibold text-slate-200 shadow-lg backdrop-blur transition hover:border-slate-500 hover:text-white"
-      type="button"
-      aria-label="Configurar cookies"
-      @click="openCookieSettings"
-    >
-      Cookies
-    </button>
-
+    <!-- Overlay bloqueante si no ha aceptado cookies o ha rechazado -->
     <div
-      v-if="showBanner"
-      class="fixed inset-x-0 bottom-0 z-50 border-t border-slate-700 bg-slate-950/95 px-4 py-4 backdrop-blur"
+      v-if="consent === null || userRejected"
+      class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm"
+      aria-hidden="true"
+    />
+
+    <!-- Modal de aceptación de cookies -->
+    <div
+      v-if="consent === null && !userRejected"
+      class="fixed inset-0 z-50 flex items-center justify-center px-4"
       role="dialog"
       aria-live="polite"
-      aria-label="Configuración de cookies"
+      aria-label="Aceptación de cookies requerida"
     >
-      <div class="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div class="max-w-3xl">
-          <p class="text-sm font-semibold text-white">Configuración de cookies</p>
-          <p class="mt-1 text-xs text-slate-300">
-            Usamos cookies analíticas para medir el uso de la web y mejorar el servicio.
-            Si no aceptas, Google Analytics se mantiene con consentimiento denegado y sin almacenamiento analítico.
+      <div class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+        <div class="mb-4 flex items-center gap-3">
+          <div class="rounded-full bg-emerald-500/20 p-3">
+            <svg class="h-6 w-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 class="text-lg font-bold text-white">Configuración de Cookies</h2>
+        </div>
+
+        <div class="mb-6 space-y-3">
+          <p class="text-sm text-slate-300">
+            <strong>Las cookies son necesarias para que funcione la web.</strong>
+          </p>
+          <p class="text-sm text-slate-300">
+            Utilizamos cookies para guardar tu progreso, mantener sesiones activas, y proporcionar una experiencia fluida mientras navegas por la plataforma.
+          </p>
+          <p class="text-xs text-slate-400">
+            También usamos Google Analytics de forma anónima para medir cómo se utiliza la web y mejorar el servicio.
           </p>
         </div>
-        <div class="flex flex-wrap gap-2">
+
+        <div class="flex gap-3">
           <button
-            class="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+            class="flex-1 rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-200 transition duration-200 hover:border-slate-500 hover:bg-slate-800 hover:text-white"
             type="button"
             @click="rejectCookies"
           >
             Rechazar
           </button>
           <button
-            class="rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:border-emerald-400 hover:text-emerald-100"
+            class="flex-1 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 shadow-lg transition duration-200 hover:border-emerald-400 hover:bg-emerald-500/30 hover:text-emerald-100"
             type="button"
             @click="acceptCookies"
           >
             Aceptar
           </button>
         </div>
+
+        <p class="mt-4 text-center text-xs text-slate-500">
+          Al aceptar, confirmas que has leído nuestra
+          <a href="/privacy" class="text-emerald-400 hover:text-emerald-300">política de cookies</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- Modal bloqueante cuando rechaza cookies -->
+    <div
+      v-if="userRejected"
+      class="fixed inset-0 z-50 flex items-center justify-center px-4"
+      role="dialog"
+      aria-live="polite"
+      aria-label="Cookies requeridas para usar la web"
+    >
+      <div class="w-full max-w-md rounded-2xl border border-amber-600/50 bg-amber-950/40 p-6 shadow-2xl backdrop-blur">
+        <div class="mb-4 flex items-center gap-3">
+          <div class="rounded-full bg-amber-500/20 p-3">
+            <svg class="h-6 w-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4v2m0 5v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h2 class="text-lg font-bold text-amber-100">Cookies Requeridas</h2>
+        </div>
+
+        <div class="mb-6 space-y-3">
+          <p class="text-sm text-amber-100/90">
+            <strong>No se puede continuar sin aceptar las cookies.</strong>
+          </p>
+          <p class="text-sm text-amber-100/70">
+            Las cookies son esenciales para que la web funcione correctamente. Sin ellas, no podemos:
+          </p>
+          <ul class="ml-4 space-y-1 text-xs text-amber-100/70">
+            <li>✓ Guardar tu progreso y preferencias</li>
+            <li>✓ Mantener tu sesión activa</li>
+            <li>✓ Procesar las interacciones en la plataforma</li>
+            <li>✓ Ofrecerte una experiencia fluida</li>
+          </ul>
+        </div>
+
+        <button
+          class="w-full rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 shadow-lg transition duration-200 hover:border-emerald-400 hover:bg-emerald-500/30 hover:text-emerald-100"
+          type="button"
+          @click="userRejected = false"
+        >
+          Entendido, aceptar cookies
+        </button>
       </div>
     </div>
   </div>
