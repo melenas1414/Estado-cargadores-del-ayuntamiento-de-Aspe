@@ -16,7 +16,7 @@
         class="fixed inset-0 z-50 flex items-center justify-center p-3 py-6 sm:p-4"
       >
         <div
-          class="relative w-full sm:max-w-md max-w-sm"
+          class="relative w-full max-w-[90vw] sm:max-w-[32rem]"
           @click.stop
         >
           <!-- Card con efecto glow y borde animado -->
