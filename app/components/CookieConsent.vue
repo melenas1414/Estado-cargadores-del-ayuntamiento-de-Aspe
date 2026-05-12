@@ -155,26 +155,28 @@ onMounted(() => {
     <!-- Modal de aceptación de cookies -->
     <div
       v-if="consent === null && !userRejected"
-      class="fixed inset-0 z-50 flex items-center justify-center px-4"
+      class="fixed inset-0 z-50 flex items-center justify-center px-3 py-6 sm:px-4"
       role="dialog"
       aria-live="polite"
       aria-label="Aceptación de cookies requerida"
     >
-      <div class="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-        <div class="mb-4 flex items-center gap-3">
-          <div class="rounded-full bg-emerald-500/20 p-3">
-            <svg class="h-6 w-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-2xl sm:max-w-md sm:p-6">
+        <!-- Header con icono -->
+        <div class="mb-4 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+          <div class="rounded-full bg-emerald-500/20 p-2.5 sm:p-3 flex-shrink-0">
+            <svg class="h-5 w-5 sm:h-6 sm:w-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           </div>
-          <h2 class="text-lg font-bold text-white">Configuración de Cookies</h2>
+          <h2 class="text-base sm:text-lg font-bold text-white text-center sm:text-left">Configuración de Cookies</h2>
         </div>
 
-        <div class="mb-6 space-y-3">
-          <p class="text-sm text-slate-300">
+        <!-- Contenido descriptivo -->
+        <div class="mb-5 space-y-2 sm:mb-6 sm:space-y-3">
+          <p class="text-xs sm:text-sm text-slate-300">
             <strong>Las cookies son necesarias para que funcione la web.</strong>
           </p>
-          <p class="text-sm text-slate-300">
+          <p class="text-xs sm:text-sm text-slate-300">
             Utilizamos cookies para guardar tu progreso, mantener sesiones activas, y proporcionar una experiencia fluida mientras navegas por la plataforma.
           </p>
           <p class="text-xs text-slate-400">
@@ -182,16 +184,17 @@ onMounted(() => {
           </p>
         </div>
 
-        <div class="flex gap-3">
+        <!-- Botones -->
+        <div class="flex flex-col gap-2 sm:gap-3 sm:flex-row">
           <button
-            class="flex-1 rounded-lg border border-slate-600 bg-slate-900 px-4 py-3 text-sm font-semibold text-slate-200 transition duration-200 hover:border-slate-500 hover:bg-slate-800 hover:text-white"
+            class="flex-1 rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm font-semibold text-slate-200 transition duration-200 hover:border-slate-500 hover:bg-slate-800 hover:text-white active:scale-95"
             type="button"
             @click="rejectCookies"
           >
             Rechazar
           </button>
           <button
-            class="flex-1 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 shadow-lg transition duration-200 hover:border-emerald-400 hover:bg-emerald-500/30 hover:text-emerald-100"
+            class="flex-1 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm font-bold text-emerald-200 shadow-lg transition duration-200 hover:border-emerald-400 hover:bg-emerald-500/30 hover:text-emerald-100 active:scale-95"
             type="button"
             @click="acceptCookies"
           >
@@ -199,9 +202,10 @@ onMounted(() => {
           </button>
         </div>
 
-        <p class="mt-4 text-center text-xs text-slate-500">
+        <!-- Política de privacidad -->
+        <p class="mt-3 sm:mt-4 text-center text-xs text-slate-500">
           Al aceptar, confirmas que has leído nuestra
-          <a href="/privacy" class="text-emerald-400 hover:text-emerald-300">política de cookies</a>
+          <a href="/privacy" class="text-emerald-400 hover:text-emerald-300 transition">política de cookies</a>
         </p>
       </div>
     </div>
@@ -209,29 +213,31 @@ onMounted(() => {
     <!-- Modal bloqueante cuando rechaza cookies -->
     <div
       v-if="userRejected"
-      class="fixed inset-0 z-50 flex items-center justify-center px-4"
+      class="fixed inset-0 z-50 flex items-center justify-center px-3 py-6 sm:px-4"
       role="dialog"
       aria-live="polite"
       aria-label="Cookies requeridas para usar la web"
     >
-      <div class="w-full max-w-md rounded-2xl border border-amber-600/50 bg-amber-950/40 p-6 shadow-2xl backdrop-blur">
-        <div class="mb-4 flex items-center gap-3">
-          <div class="rounded-full bg-amber-500/20 p-3">
-            <svg class="h-6 w-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div class="w-full max-w-sm rounded-2xl border border-amber-600/50 bg-amber-950/40 p-4 shadow-2xl backdrop-blur sm:max-w-md sm:p-6">
+        <!-- Header con icono -->
+        <div class="mb-4 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+          <div class="rounded-full bg-amber-500/20 p-2.5 sm:p-3 flex-shrink-0">
+            <svg class="h-5 w-5 sm:h-6 sm:w-6 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4v2m0 5v.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h2 class="text-lg font-bold text-amber-100">Cookies Requeridas</h2>
+          <h2 class="text-base sm:text-lg font-bold text-amber-100 text-center sm:text-left">Cookies Requeridas</h2>
         </div>
 
-        <div class="mb-6 space-y-3">
-          <p class="text-sm text-amber-100/90">
-            <strong>No se puede continuar sin aceptar las cookies.</strong>
+        <!-- Contenido -->
+        <div class="mb-5 space-y-2 sm:mb-6 sm:space-y-3">
+          <p class="text-xs sm:text-sm font-semibold text-amber-100/90">
+            No se puede continuar sin aceptar las cookies.
           </p>
-          <p class="text-sm text-amber-100/70">
+          <p class="text-xs sm:text-sm text-amber-100/70">
             Las cookies son esenciales para que la web funcione correctamente. Sin ellas, no podemos:
           </p>
-          <ul class="ml-4 space-y-1 text-xs text-amber-100/70">
+          <ul class="ml-3 space-y-1 text-xs text-amber-100/70">
             <li>✓ Guardar tu progreso y preferencias</li>
             <li>✓ Mantener tu sesión activa</li>
             <li>✓ Procesar las interacciones en la plataforma</li>
@@ -239,8 +245,9 @@ onMounted(() => {
           </ul>
         </div>
 
+        <!-- Botón -->
         <button
-          class="w-full rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-4 py-3 text-sm font-bold text-emerald-200 shadow-lg transition duration-200 hover:border-emerald-400 hover:bg-emerald-500/30 hover:text-emerald-100"
+          class="w-full rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-3 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm font-bold text-emerald-200 shadow-lg transition duration-200 hover:border-emerald-400 hover:bg-emerald-500/30 hover:text-emerald-100 active:scale-95"
           type="button"
           @click="userRejected = false"
         >
