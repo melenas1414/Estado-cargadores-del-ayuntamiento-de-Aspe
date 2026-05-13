@@ -29,7 +29,19 @@ function parsePeriodo(raw: unknown): number | null {
 
 function occupancyRatio(row: Row): number {
   const total = typeof row.total_connectors === 'number' && row.total_connectors > 0 ? row.total_connectors : 2;
-  const free = typeof row.available_connectors === 'number' ? row.available_connectors : (row.is_available ? 1 : 0);
+  
+  // Preferir available_connectors si es un número válido (≥ 0)
+  let free = 0;
+  if (typeof row.available_connectors === 'number' && row.available_connectors >= 0) {
+    free = row.available_connectors;
+  } else if (row.is_available) {
+    // Fallback: si is_available es true, asumir al menos 1 conector libre de total
+    free = 1;
+  } else {
+    // Si is_available es false, asumir que está completamente ocupado
+    free = 0;
+  }
+  
   const freeSafe = Math.max(0, Math.min(total, free));
   return total > 0 ? (1 - freeSafe / total) : 0;
 }
@@ -64,9 +76,28 @@ export default defineEventHandler(async (event) => {
   }
 
   const rows = (data ?? []) as Row[];
+  
+  // Si no hay datos específicos del cargador, intentar con datos globales
+  let finalRows = rows;
+  if (rows.length === 0 && stationId) {
+    // Fallback: usar todos los datos sin filtrar por station_id
+    let fallbackQuery = supabase
+      .from('charging_logs')
+      .select('created_at, is_available, available_connectors, total_connectors')
+      .order('created_at', { ascending: true });
+    
+    if (dias !== null) {
+      const since = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+      fallbackQuery = fallbackQuery.gte('created_at', since);
+    }
+    
+    const { data: fallbackData } = await fallbackQuery;
+    finalRows = (fallbackData ?? []) as Row[];
+  }
+
   const acc = Array.from({ length: 24 }, () => ({ occ: 0, samples: 0 }));
 
-  for (const row of rows) {
+  for (const row of finalRows) {
     const hour = new Date(row.created_at).getHours();
     acc[hour].occ += occupancyRatio(row);
     acc[hour].samples += 1;
@@ -78,9 +109,14 @@ export default defineEventHandler(async (event) => {
     samples: item.samples,
   }));
 
+  const totalSamples = finalRows.length;
+  const usedFallback = rows.length === 0 && stationId;
+
   return {
     periodoDias: dias,
     stationId,
     points: puntos,
+    totalSamples,
+    usedFallback,
   };
 });

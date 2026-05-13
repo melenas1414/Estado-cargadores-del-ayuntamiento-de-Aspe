@@ -163,12 +163,18 @@ useHead(() => ({
         <article class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
           <h2 class="text-xs uppercase tracking-wider text-slate-400">Ocupación por día</h2>
           <div v-if="occDayPending" class="mt-3 h-24 animate-pulse rounded-lg bg-slate-900" />
-          <div v-else class="mt-3 space-y-2">
-            <div v-for="point in occDayData?.points ?? []" :key="`d-${point.dayIndex}`" class="space-y-1">
-              <div class="flex justify-between text-xs text-slate-300"><span>{{ point.dayLabel }}</span><span>{{ point.occupancyPct }}%</span></div>
-              <div class="h-2 rounded-full bg-slate-800"><div class="h-full rounded-full bg-amber-400" :style="{ width: `${point.occupancyPct}%` }" /></div>
+          <div v-else-if="occDayData?.points?.length" class="mt-3 space-y-2">
+            <div v-for="point in occDayData.points" :key="`d-${point.dateStr}`" class="space-y-1">
+              <div class="flex justify-between text-xs text-slate-300">
+                <span>{{ point.dateLabel }} ({{ point.dayLabel }})</span>
+                <span>{{ point.occupancyPct }}%</span>
+              </div>
+              <div class="h-2 rounded-full bg-slate-800">
+                <div class="h-full rounded-full bg-amber-400" :style="{ width: `${point.occupancyPct}%` }" />
+              </div>
             </div>
           </div>
+          <p v-else class="mt-3 text-xs text-slate-500">Sin datos suficientes para mostrar la ocupación por día.</p>
         </article>
       </section>
 
