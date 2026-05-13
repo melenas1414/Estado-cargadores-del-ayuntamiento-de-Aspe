@@ -47,7 +47,7 @@
             </button>
 
             <!-- Imagen del Tesla M3 con overlay -->
-            <div class="relative h-40 sm:h-56 overflow-hidden bg-gradient-to-b from-slate-700 to-slate-900">
+            <div class="relative h-40 sm:h-48 overflow-hidden bg-gradient-to-b from-slate-700 to-slate-900">
               <img
                 src="/tesla-m3-model.jpg"
                 alt="Tesla Model 3"
@@ -97,7 +97,7 @@
                   <p class="text-[9px] sm:text-[10px] text-slate-400 font-semibold">0-100 km/h</p>
                 </div>
                 <div class="bg-amber-500/5 border border-amber-500/20 rounded-lg p-2 sm:p-2.5 text-center hover:bg-amber-500/10 transition-colors">
-                  <p class="text-base sm:text-lg font-bold text-amber-300">25€</p>
+                  <p class="text-base sm:text-lg font-bold text-amber-300">6€</p>
                   <p class="text-[9px] sm:text-[10px] text-slate-400 font-semibold">/100km</p>
                 </div>
               </div>
@@ -124,37 +124,39 @@
                 <p class="text-[10px] text-slate-400 mt-0.5 sm:mt-1">2.347 clientes compraron este mes. Solo 152 unidades disponibles en España.</p>
               </div>
 
-              <!-- CTA Button Principal - MEGA LLAMATIVO -->
-              <a
-                :href="teslaUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                @click="recordClick"
-                class="block relative group w-full overflow-hidden rounded-xl font-bold py-3 sm:py-4 px-4 text-center text-white uppercase tracking-widest shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 text-sm sm:text-lg"
-              >
-                <!-- Fondo animado -->
-                <div class="absolute inset-0 bg-gradient-to-r from-emerald-500 via-cyan-500 to-emerald-600 group-hover:via-emerald-400" />
-                <div class="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-r from-emerald-400 to-cyan-400 blur group-hover:blur-lg transition-all" />
-                
-                <!-- Brillo animado -->
-                <div class="absolute -inset-full top-1/2 h-1/2 w-full skew-x-12 bg-white/20 translate-x-full group-hover:translate-x-0 transition-transform duration-700" />
-                
-                <!-- Texto -->
-                <span class="relative flex items-center justify-center gap-1 sm:gap-2">
-                  🚗 QUIERO MI TESLA AHORA
-                  <svg class="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                  </svg>
-                </span>
-              </a>
+              <!-- CTA Buttons - Side by side -->
+              <div class="grid grid-cols-2 gap-2 sm:gap-3">
+                <a
+                  :href="teslaUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  @click="recordClick"
+                  class="relative group overflow-hidden rounded-xl font-bold py-2 sm:py-3 px-2 sm:px-3 text-center text-white uppercase tracking-widest shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 text-[11px] sm:text-sm"
+                >
+                  <!-- Fondo animado -->
+                  <div class="absolute inset-0 bg-gradient-to-r from-emerald-500 via-cyan-500 to-emerald-600 group-hover:via-emerald-400" />
+                  <div class="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-r from-emerald-400 to-cyan-400 blur group-hover:blur-lg transition-all" />
+                  
+                  <!-- Brillo animado -->
+                  <div class="absolute -inset-full top-1/2 h-1/2 w-full skew-x-12 bg-white/20 translate-x-full group-hover:translate-x-0 transition-transform duration-700" />
+                  
+                  <!-- Texto -->
+                  <span class="relative flex items-center justify-center gap-0.5">
+                    🚗 TESLA
+                  </span>
+                </a>
 
-              <!-- Secondary action -->
-              <button
-                @click="closePopup('button')"
-                class="w-full text-slate-400 hover:text-slate-300 text-[11px] sm:text-xs py-2 transition-colors font-medium"
-              >
-                Quizás no estoy listo (pero lo estaré pronto 😏)
-              </button>
+                <!-- Secondary action -->
+                <button
+                  @click="closePopup('button')"
+                  class="relative group overflow-hidden rounded-xl font-bold py-2 sm:py-3 px-2 sm:px-3 text-center text-white uppercase tracking-widest shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 text-[11px] sm:text-sm"
+                >
+                  <div class="absolute inset-0 bg-gradient-to-r from-slate-700 to-slate-800 group-hover:from-slate-600 group-hover:to-slate-700" />
+                  <span class="relative flex items-center justify-center">
+                    Quizás luego
+                  </span>
+                </button>
+              </div>
             </div>
 
             <!-- Footer con testimonial -->
