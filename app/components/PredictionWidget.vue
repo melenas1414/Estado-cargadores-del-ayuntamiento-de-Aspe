@@ -68,6 +68,11 @@ const contextoMomento = computed(() => {
   if (dias === 1) return 'mañana';
   return `en ${dias} días`;
 });
+
+// Indicador de si estamos en modo especulativo (sin datos)
+const esPrediccionEspeculativa = computed(() => {
+  return props.metodoPrediccion === 'sin_datos';
+});
 </script>
 
 <template>
@@ -84,25 +89,8 @@ const contextoMomento = computed(() => {
       <span v-if="fechaObjetivo">({{ fechaObjetivo }})</span>
     </p>
 
-    <!-- Sin datos suficientes -->
-    <div
-      v-if="!haySuficientesDatos"
-      class="flex flex-col items-center justify-center gap-2 py-8 text-center"
-    >
-      <CalendarCheck class="h-8 w-8 text-slate-600" />
-      <p class="text-sm text-slate-500">
-        Acumulando datos históricos…<br />
-        <span class="text-xs">
-          Recomendado: al menos {{ diasMinimosRecomendados ?? 28 }} días de histórico.
-          <template v-if="diasFaltantesEstimados !== undefined">Faltan aprox. {{ diasFaltantesEstimados }} días.</template>
-        </span>
-      </p>
-      <p class="text-[11px] text-slate-600">
-        {{ diasHistoricosConDatos ?? 0 }} días históricos con datos · {{ muestrasTotales ?? 0 }} muestras analizadas
-      </p>
-    </div>
-
-    <template v-else>
+    <!-- Siempre mostrar predicción (con o sin datos históricos) -->
+    <template>
       <!-- Predicción principal -->
       <div
         class="mb-4 flex items-center justify-between rounded-xl
@@ -115,17 +103,22 @@ const contextoMomento = computed(() => {
           </p>
           <p class="mt-0.5 flex items-center gap-1 text-xs" :class="colorConfianza">
             <TrendingUp class="h-3 w-3" />
-            {{ nivelConfianza }} · {{ probabilidad }}% disponibilidad
+            {{ nivelConfianza }} 
+            <template v-if="!esPrediccionEspeculativa">· {{ probabilidad }}% disponibilidad</template>
           </p>
-          <p v-if="usaFallbackGlobal" class="mt-1 text-[11px] text-amber-300">
-            Predicción por histórico global (sin suficientes datos del mismo día)
+          <p v-if="usaFallbackGlobal && !esPrediccionEspeculativa" class="mt-1 text-[11px] text-amber-300">
+            Predicción por histórico global (datos insuficientes del mismo día)
+          </p>
+          <p v-if="esPrediccionEspeculativa" class="mt-1 text-[11px] text-blue-300">
+            Sugerencia basada en patrones típicos de carga EV (acumulando datos)
           </p>
         </div>
         <div
           class="flex h-14 w-14 items-center justify-center rounded-full
                  border-2 border-blue-400/40 bg-blue-500/20 text-xl font-bold text-blue-300"
         >
-          {{ probabilidad }}%
+          <template v-if="esPrediccionEspeculativa">⭐</template>
+          <template v-else>{{ probabilidad }}%</template>
         </div>
       </div>
 

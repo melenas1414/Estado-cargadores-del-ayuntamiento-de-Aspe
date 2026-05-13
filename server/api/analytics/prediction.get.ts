@@ -2,16 +2,24 @@
  * GET /api/analytics/prediction
  *
  * Analiza la ventana histórica completa y calcula la mejor hora agregada
- * por hora del día (00-23), sin restringir por día de la semana.
+ * por hora del día (00-23), con estrategia robusta de fallback.
+ * 
+ * ESTRATEGIA (en orden):
+ * 1. Predicción por día semana (si hay ≥2 días históricos o ≥24 muestras)
+ * 2. Fallback global (si hay ≥48 muestras totales)
+ * 3. Horas "sugeridas" con lógica inteligente (basada en patrones típicos EV)
  */
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
 
 const DIAS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const VENTANA_HISTORICA_DIAS = 56;
-const MIN_DIAS_CON_DATOS = 4;
-const MIN_MUESTRAS_TOTALES = 168;
-const MIN_MUESTRAS_FALLBACK_GLOBAL = 48;
+
+// Umbrales más permisivos
+const MIN_DIAS_CON_DATOS_WEEKDAY = 2;      // Mínimo 2 días del mismo día de la semana
+const MIN_MUESTRAS_WEEKDAY = 24;            // Mínimo 24 muestras (1 día de datos cada hora)
+const MIN_MUESTRAS_FALLBACK_GLOBAL = 24;   // Mínimo 24 muestras globales para fallback
+const MIN_MUESTRAS_SUGERENCIA = 1;          // Modo best-guess: ≥1 muestra válida
 
 type NivelConfianza = 'alta' | 'media' | 'baja';
 type MetodoPrediccion = 'weekday' | 'global' | 'sin_datos';
@@ -33,9 +41,53 @@ function parseStationId(raw: unknown): string | null {
 }
 
 function confianzaDesdeMuestras(muestras: number): NivelConfianza {
-  if (muestras >= 336) return 'alta';
-  if (muestras >= 120) return 'media';
+  if (muestras >= 240) return 'alta';    // 10 días de datos
+  if (muestras >= 72) return 'media';    // 3 días de datos
   return 'baja';
+}
+
+// Horas recomendadas típicas para carga de vehículos eléctricos
+// Basadas en patrones de uso: mañana temprana (6-9h), mediodía (12-14h), tarde (17-19h)
+const HORAS_SUGERIDAS_POR_DEFECTO = [8, 9, 13, 18];
+
+/**
+ * Calcula la mejor hora con criterio de desempate inteligente
+ * - Prioriza horas con mayor disponibilidad
+ * - Si hay empate, prefiere horas "razonables" (evita 00:00 - 06:00)
+ * - Si todas tienen igual disponibilidad, elige la hora sugerida más temprana
+ */
+function mejorHoraConDesempate(
+  franjas: Array<{ hora: number; disponibilidad: number; conDatos: boolean; muestras: number }>
+): { hora: number; disponibilidad: number; conDatos: boolean; muestras: number } {
+  if (franjas.length === 0) {
+    return { hora: 9, disponibilidad: 0, conDatos: false, muestras: 0 };
+  }
+
+  // Ordenar por disponibilidad descendente
+  const sorted = [...franjas].sort((a, b) => b.disponibilidad - a.disponibilidad);
+  const maxDisponibilidad = sorted[0].disponibilidad;
+
+  // Candidatos con máxima disponibilidad
+  const mejoresCandidatos = sorted.filter((f) => f.disponibilidad === maxDisponibilidad);
+
+  // Si hay múltiples con igual disponibilidad, aplicar criterios de desempate
+  if (mejoresCandidatos.length > 1) {
+    // 1. Preferir horas razonables (06:00 - 22:00)
+    const horasRazonables = mejoresCandidatos.filter((f) => f.hora >= 6 && f.hora <= 22);
+    if (horasRazonables.length > 0) {
+      // 2. De las razonables, preferir horas sugeridas
+      const horasSugeridas = horasRazonables.filter((f) => HORAS_SUGERIDAS_POR_DEFECTO.includes(f.hora));
+      if (horasSugeridas.length > 0) {
+        return horasSugeridas[0];
+      }
+      // 3. Si no hay sugeridas, retornar la primera razonable
+      return horasRazonables[0];
+    }
+    // Si no hay razonables, retornar la primera del ranking
+    return mejoresCandidatos[0];
+  }
+
+  return mejoresCandidatos[0];
 }
 
 export default defineEventHandler(async (event) => {
@@ -51,7 +103,7 @@ export default defineEventHandler(async (event) => {
 
   let queryLogs = supabase
     .from('charging_logs')
-    .select('created_at, is_available')
+    .select('created_at, is_available, available_connectors')
     .gte('created_at', haceVentana.toISOString());
 
   if (stationId) {
@@ -90,13 +142,18 @@ export default defineEventHandler(async (event) => {
     muestrasPorDiaSemana[diaSemana]++;
     muestrasGlobales++;
 
+    // Lógica de disponibilidad: preferir available_connectors, fallback a is_available
+    const disponible = typeof fila.available_connectors === 'number' 
+      ? fila.available_connectors > 0 
+      : fila.is_available;
+
     porHoraGlobal[hora].total++;
-    if (fila.is_available) porHoraGlobal[hora].disponibles++;
+    if (disponible) porHoraGlobal[hora].disponibles++;
 
     if (diaSemana !== diaObjetivo) continue;
 
     porHoraWeekday[hora].total++;
-    if (fila.is_available) porHoraWeekday[hora].disponibles++;
+    if (disponible) porHoraWeekday[hora].disponibles++;
   }
 
   // ─── Calcular disponibilidad (%) por hora ──────────────────────────────
@@ -120,37 +177,64 @@ export default defineEventHandler(async (event) => {
     };
   });
 
-  // ─── Elegir la mejor hora (máxima disponibilidad con suficientes datos) ─
+  // ─── Elegir la mejor hora con estrategia robusta de fallback ─────────────────
   const franjasWeekdayConDatos = franjasWeekday.filter((f) => f.conDatos);
   const franjasGlobalConDatos = franjasGlobal.filter((f) => f.conDatos);
   const diasHistoricosConDatos = diasHistoricosConDatosSet.size;
   const diasConDatos = diasConDatosPorDiaSemana[diaObjetivo].size;
-  const muestrasTotales = franjasWeekday.reduce((acc, f) => acc + f.muestras, 0);
+  const muestrasTotalesWeekday = franjasWeekdayConDatos.reduce((acc, f) => acc + f.muestras, 0);
+
+  // ESTRATEGIA 1: Predicción por día de semana (más confiable)
   const haySuficientesDatosWeekday =
     franjasWeekdayConDatos.length > 0 &&
-    (diasConDatos >= MIN_DIAS_CON_DATOS || muestrasTotales >= MIN_MUESTRAS_TOTALES);
+    (diasConDatos >= MIN_DIAS_CON_DATOS_WEEKDAY || muestrasTotalesWeekday >= MIN_MUESTRAS_WEEKDAY);
+
+  // ESTRATEGIA 2: Fallback global (cuando no hay datos específicos del día)
   const hayDatosFallbackGlobal =
     franjasGlobalConDatos.length > 0 &&
-    (diasHistoricosConDatos >= MIN_DIAS_CON_DATOS || muestrasGlobales >= MIN_MUESTRAS_FALLBACK_GLOBAL);
+    muestrasGlobales >= MIN_MUESTRAS_FALLBACK_GLOBAL;
 
-  const metodoPrediccion: MetodoPrediccion = haySuficientesDatosWeekday
-    ? 'weekday'
-    : (hayDatosFallbackGlobal ? 'global' : 'sin_datos');
-  const franjas = metodoPrediccion === 'weekday'
-    ? franjasWeekday
-    : (metodoPrediccion === 'global' ? franjasGlobal : franjasWeekday);
-  const franjasConDatos = franjas.filter((f) => f.conDatos);
-  const haySuficientesDatos = metodoPrediccion !== 'sin_datos' && franjasConDatos.length > 0;
+  // Elegir el mejor método disponible
+  let metodoPrediccion: MetodoPrediccion;
+  let franjas: Array<{ hora: number; disponibilidad: number; conDatos: boolean; muestras: number }>;
+  let franjasConDatos: Array<{ hora: number; disponibilidad: number; conDatos: boolean; muestras: number }>;
+  let haySuficientesDatos: boolean;
 
+  if (haySuficientesDatosWeekday) {
+    // MÉTODO 1: Usar predicción específica del día de la semana
+    metodoPrediccion = 'weekday';
+    franjas = franjasWeekday;
+    franjasConDatos = franjasWeekdayConDatos;
+    haySuficientesDatos = true;
+  } else if (hayDatosFallbackGlobal) {
+    // MÉTODO 2: Fallback a datos globales
+    metodoPrediccion = 'global';
+    franjas = franjasGlobal;
+    franjasConDatos = franjasGlobalConDatos;
+    haySuficientesDatos = true;
+  } else {
+    // MÉTODO 3: Modo best-guess (sugerir horas típicas sin datos históricos)
+    metodoPrediccion = 'sin_datos';
+    franjas = franjasWeekday;  // Retornar franjas vacías para mostrar gráfico vacío
+    franjasConDatos = [];
+    haySuficientesDatos = false;
+  }
+
+  // Calcular la mejor hora con desempate inteligente
   const mejorFranja = haySuficientesDatos
-    ? franjasConDatos.reduce((a, b) => (a.disponibilidad >= b.disponibilidad ? a : b))
-    : { hora: 8, disponibilidad: 0, conDatos: false, muestras: 0 };
+    ? mejorHoraConDesempate(franjasConDatos)
+    : mejorHoraConDesempate(HORAS_SUGERIDAS_POR_DEFECTO.map((h) => ({
+        hora: h,
+        disponibilidad: 50,  // Disponibilidad neutral
+        conDatos: false,
+        muestras: 0,
+      })));
 
   const confianza: NivelConfianza = metodoPrediccion === 'sin_datos'
     ? 'baja'
     : (metodoPrediccion === 'global'
-      ? (muestrasGlobales >= MIN_MUESTRAS_TOTALES ? 'media' : 'baja')
-      : confianzaDesdeMuestras(muestrasTotales));
+      ? (muestrasGlobales >= 120 ? 'media' : 'baja')
+      : confianzaDesdeMuestras(muestrasTotalesWeekday));
 
   // ─── Horas recomendables (disponibilidad ≥ 70 %) ────────────────────────
   const horasRecomendadas = haySuficientesDatos
@@ -161,16 +245,20 @@ export default defineEventHandler(async (event) => {
     : [];
 
   const fallbackGlobalCercanoDisponible =
-    diasHistoricosConDatos >= MIN_DIAS_CON_DATOS || muestrasGlobales >= MIN_MUESTRAS_TOTALES;
+    muestrasGlobales >= MIN_MUESTRAS_FALLBACK_GLOBAL || diasHistoricosConDatos >= MIN_DIAS_CON_DATOS_WEEKDAY;
 
   const diasDisponibles = Array.from({ length: 31 }, (_, dias) => {
     const fecha = new Date(ahora.getTime() + dias * 24 * 60 * 60 * 1000);
     const diaSemana = fecha.getDay();
     const diasConDatosDia = diasConDatosPorDiaSemana[diaSemana].size;
     const muestrasDia = muestrasPorDiaSemana[diaSemana];
-    const disponibleWeekday = diasConDatosDia >= MIN_DIAS_CON_DATOS || muestrasDia >= MIN_MUESTRAS_TOTALES;
+    
+    // Criterios más permisivos para disponibilidad
+    const disponibleWeekday = diasConDatosDia >= MIN_DIAS_CON_DATOS_WEEKDAY || muestrasDia >= MIN_MUESTRAS_WEEKDAY;
     const disponibleFallbackCercano = fallbackGlobalCercanoDisponible && dias <= 7;
-    const disponible = disponibleWeekday || disponibleFallbackCercano;
+    const disponibleBestGuess = dias <= 14;  // Ofrecer predicción best-guess para próximas 2 semanas
+    const disponible = disponibleWeekday || disponibleFallbackCercano || disponibleBestGuess;
+    
     const confianzaFecha: NivelConfianza = disponibleWeekday
       ? confianzaDesdeMuestras(muestrasDia)
       : (disponibleFallbackCercano ? 'baja' : 'baja');
@@ -193,19 +281,21 @@ export default defineEventHandler(async (event) => {
     diaSemana: DIAS_ES[diaObjetivo],
     fechaObjetivo: toISODate(fechaObjetivo),
     diasHaciaFuturo,
-    franjas,
-    horasRecomendadas,
+    franjas,  // Siempre devolver franjas (vacías o con datos)
+    horasRecomendadas: franjasConDatos.length > 0
+      ? franjasConDatos.filter((f) => f.disponibilidad >= 70).map((f) => f.hora).sort((a, b) => a - b)
+      : HORAS_SUGERIDAS_POR_DEFECTO,
     confianza,
     metodoPrediccion,
     usaFallbackGlobal: metodoPrediccion === 'global',
     haySuficientesDatos,
     diasConDatos,
     diasHistoricosConDatos,
-    muestrasTotales,
+    muestrasTotales: muestrasTotalesWeekday,
     muestrasGlobales,
     diasDisponibles,
-    diasMinimosRecomendados: 28,
-    diasFaltantesEstimados: Math.max(0, 28 - diasHistoricosConDatos),
+    diasMinimosRecomendados: MIN_DIAS_CON_DATOS_WEEKDAY,
+    diasFaltantesEstimados: Math.max(0, MIN_DIAS_CON_DATOS_WEEKDAY - diasConDatos),
     ventanaHistoricaDias: VENTANA_HISTORICA_DIAS,
   };
 });
