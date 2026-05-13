@@ -16,7 +16,7 @@
         class="fixed inset-0 z-50 flex items-center justify-center p-3 py-6 sm:p-4"
       >
         <div
-          class="relative w-full max-w-[90vw] sm:max-w-[32rem]"
+          class="relative w-full max-w-[90vw] sm:max-w-[48rem]"
           @click.stop
         >
           <!-- Card con efecto glow y borde animado -->
@@ -49,7 +49,7 @@
             <!-- Imagen del Tesla M3 con overlay -->
             <div class="relative h-40 sm:h-56 overflow-hidden bg-gradient-to-b from-slate-700 to-slate-900">
               <img
-                src="https://images.tesla.com/image/upload/f_auto,q_auto:best/Homepage-Model3-D-Desktop-Global"
+                src="/tesla-m3-model.jpg"
                 alt="Tesla Model 3"
                 class="w-full h-full object-cover transform hover:scale-105 transition-transform duration-500"
               />
