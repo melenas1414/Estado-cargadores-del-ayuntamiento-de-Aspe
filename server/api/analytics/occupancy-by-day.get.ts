@@ -111,25 +111,80 @@ export default defineEventHandler(async (event) => {
     accByDate[dateKey].samples += 1;
   }
 
-  // Convertir a array ordenado por fecha
-  const sortedDates = Object.keys(accByDate).sort();
+  // Si el período es largo (30d, all) o no especificado, agrupar por día de semana
+  // Si es corto (7d, today), mostrar por fecha calendario
+  const isLongPeriod = dias === null || dias >= 30;
   
-  // Si estamos viendo por día de semana (sin período específico o período largo), agrupar por día de semana
-  // Si no, mostrar por fecha calendario
-  const points = sortedDates.map((dateStr) => {
-    const date = new Date(dateStr);
-    const item = accByDate[dateStr];
-    const dayIndex = date.getDay();
+  let points: any[] = [];
+
+  if (isLongPeriod) {
+    // AGRUPAR POR DÍA DE SEMANA (Lunes, Martes, etc.)
+    const accByWeekday: Record<number, { occ: number; samples: number }> = {};
     
-    return {
-      dateStr,
-      dayIndex,
-      dayLabel: DIAS_ES[dayIndex],
-      dateLabel: formatDateForDisplay(dateStr),
-      occupancyPct: item.samples ? Math.round((item.occ / item.samples) * 100) : 0,
-      samples: item.samples,
-    };
-  });
+    for (let day = 0; day < 7; day++) {
+      accByWeekday[day] = { occ: 0, samples: 0 };
+    }
+    
+    for (const dateStr of Object.keys(accByDate)) {
+      const date = new Date(dateStr);
+      const dayIndex = date.getDay();
+      const item = accByDate[dateStr];
+      
+      accByWeekday[dayIndex].occ += item.occ;
+      accByWeekday[dayIndex].samples += item.samples;
+    }
+    
+    // Crear puntos ordenados por día de semana
+    points = Array.from({ length: 7 }, (_, dayIndex) => {
+      const item = accByWeekday[dayIndex];
+      
+      return {
+        dayIndex,
+        dayLabel: DIAS_ES[dayIndex],
+        dateLabel: DIAS_ES[dayIndex],
+        occupancyPct: item.samples ? Math.round((item.occ / item.samples) * 100) : 0,
+        samples: item.samples,
+        isAverage: true,
+      };
+    });
+  } else {
+    // MOSTRAR POR FECHA CALENDARIO para períodos cortos
+    // Generar rango completo de fechas (incluyendo días sin datos)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const startDate = dias !== null 
+      ? new Date(today.getTime() - dias * 24 * 60 * 60 * 1000)
+      : new Date(finalRows[0] ? new Date(finalRows[0].created_at) : today);
+    
+    startDate.setHours(0, 0, 0, 0);
+    
+    const allDates: string[] = [];
+    const currentDate = new Date(startDate);
+    
+    while (currentDate <= today) {
+      const dateStr = currentDate.toISOString().slice(0, 10);
+      allDates.push(dateStr);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    // Crear puntos para todas las fechas en el rango
+    points = allDates.map((dateStr) => {
+      const date = new Date(dateStr);
+      const item = accByDate[dateStr] ?? { occ: 0, samples: 0 };
+      const dayIndex = date.getDay();
+      
+      return {
+        dateStr,
+        dayIndex,
+        dayLabel: DIAS_ES[dayIndex],
+        dateLabel: formatDateForDisplay(dateStr),
+        occupancyPct: item.samples ? Math.round((item.occ / item.samples) * 100) : 0,
+        samples: item.samples,
+        isAverage: false,
+      };
+    });
+  }
 
   return {
     periodoDias: dias,

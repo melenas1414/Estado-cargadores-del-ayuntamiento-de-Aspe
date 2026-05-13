@@ -107,6 +107,7 @@ export default defineEventHandler(async (event) => {
     hour,
     occupancyPct: item.samples ? Math.round((item.occ / item.samples) * 100) : 0,
     samples: item.samples,
+    isAverage: true, // Siempre es media de todas las muestras del período
   }));
 
   const totalSamples = finalRows.length;
@@ -118,5 +119,6 @@ export default defineEventHandler(async (event) => {
     points: puntos,
     totalSamples,
     usedFallback,
+    isAverageData: true, // Indicador de que los puntos son medias
   };
 });

@@ -150,9 +150,10 @@ useHead(() => ({
       <section class="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <article class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
           <h2 class="text-xs uppercase tracking-wider text-slate-400">Ocupación por hora</h2>
+          <p v-if="occHourData?.isAverageData" class="text-[10px] text-slate-500 mt-1">Media del período</p>
             <div v-if="occHourPending" class="mt-3 h-24 animate-pulse rounded-lg bg-slate-900" />
             <div v-else-if="occHourData?.points?.length" class="mt-3 flex h-24 items-end gap-1">
-              <div v-for="point in occHourData.points" :key="`h-${point.hour}`" class="flex-1 group" :title="`${point.hour}h ${point.occupancyPct}%`">
+              <div v-for="point in occHourData.points" :key="`h-${point.hour}`" class="flex-1 group" :title="`${point.hour}h (media) ${point.occupancyPct}%`">
                 <div class="w-full rounded-t bg-emerald-400/90 group-hover:bg-emerald-500 transition-all border border-emerald-700 shadow-md"
                   :style="{ height: `${Math.max(3, point.occupancyPct)}%` }" />
               </div>
@@ -163,15 +164,29 @@ useHead(() => ({
         <article class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
           <h2 class="text-xs uppercase tracking-wider text-slate-400">Ocupación por día</h2>
           <div v-if="occDayPending" class="mt-3 h-24 animate-pulse rounded-lg bg-slate-900" />
-          <div v-else-if="occDayData?.points?.length" class="mt-3 space-y-2">
-            <div v-for="point in occDayData.points" :key="`d-${point.dateStr}`" class="space-y-1">
-              <div class="flex justify-between text-xs text-slate-300">
-                <span>{{ point.dateLabel }} ({{ point.dayLabel }})</span>
-                <span>{{ point.occupancyPct }}%</span>
+          <div v-else-if="occDayData?.points?.length" class="mt-3 space-y-2" :class="occDayData.points[0]?.isAverage ? '' : 'max-h-80 overflow-y-auto'">
+            <div v-for="point in occDayData.points" :key="`d-${point.dateStr ?? point.dayIndex}`" class="space-y-1">
+              <div class="flex justify-between text-xs">
+                <span :class="point.samples ? 'text-slate-300' : 'text-slate-500'">
+                  <template v-if="point.isAverage">
+                    {{ point.dayLabel }} (media)
+                  </template>
+                  <template v-else>
+                    {{ point.dateLabel }} ({{ point.dayLabel }})
+                  </template>
+                </span>
+                <span :class="point.samples ? 'text-slate-300' : 'text-slate-600'">
+                  {{ point.occupancyPct }}%
+                </span>
               </div>
-              <div class="h-2 rounded-full bg-slate-800">
-                <div class="h-full rounded-full bg-amber-400" :style="{ width: `${point.occupancyPct}%` }" />
+              <div class="h-2 rounded-full" :class="point.samples ? 'bg-slate-800' : 'bg-slate-900'">
+                <div 
+                  class="h-full rounded-full transition-all"
+                  :class="point.samples ? 'bg-amber-400' : 'bg-slate-700'"
+                  :style="{ width: `${Math.max(point.occupancyPct, 1)}%` }" 
+                />
               </div>
+              <p v-if="!point.samples" class="text-[10px] text-slate-600">Sin datos</p>
             </div>
           </div>
           <p v-else class="mt-3 text-xs text-slate-500">Sin datos suficientes para mostrar la ocupación por día.</p>
