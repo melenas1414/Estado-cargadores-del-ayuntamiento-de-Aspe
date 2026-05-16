@@ -1,18 +1,19 @@
 /**
- * GET /api/analytics/heatmap?periodo=7d|30d|today|all
+ * GET /api/analytics/heatmap?periodo=7d|30d|today|all&station_id=...
  *
  * Devuelve una matriz de ocupación agrupada por día de la semana (0=Dom…6=Sáb)
  * y hora del día (0-23), expresada como porcentaje de ocupación (0-100).
  *
  * Estructura de respuesta:
  * {
- *   datos: [
- *     { dia: 1, hora: 8, totalRegistros: 48, ocupados: 36, porcentaje: 75 },
+ *   points: [
+ *     { dia: 1, hora: 8, porcentaje: 75 },
  *     …
  *   ]
  * }
  */
 import { serverSupabaseClient } from '#supabase/server';
+import { getQuery } from 'h3';
 
 const DIAS_POR_PERIODO: Record<string, number | null> = {
   today: 1,
@@ -21,34 +22,12 @@ const DIAS_POR_PERIODO: Record<string, number | null> = {
   all: null,
 };
 
-const madridFormatter = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Europe/Madrid',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  hourCycle: 'h23',
-  hour12: false,
-});
-
-function getMadridDayHour(fechaUtc: Date): { dia: number; hora: number } | null {
-  const parts = madridFormatter.formatToParts(fechaUtc);
-
-  const year = Number(parts.find((p) => p.type === 'year')?.value);
-  const month = Number(parts.find((p) => p.type === 'month')?.value);
-  const day = Number(parts.find((p) => p.type === 'day')?.value);
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value);
-
-  if (![year, month, day, hour].every((n) => Number.isFinite(n))) return null;
-
-  // Construimos una fecha UTC con componentes ya convertidos a hora local Madrid.
-  // Así obtenemos día de semana/hora estables sin depender de abreviaturas locales.
-  const pseudoUtc = new Date(Date.UTC(year, month - 1, day, hour, 0, 0));
-  return {
-    dia: pseudoUtc.getUTCDay(),
-    hora: hour,
-  };
-}
+type Row = {
+  created_at: string;
+  is_available: boolean;
+  available_connectors: number | null;
+  total_connectors: number | null;
+};
 
 function parseStationId(raw: unknown): string | null {
   const stationId = String(raw ?? '').trim();
@@ -56,83 +35,114 @@ function parseStationId(raw: unknown): string | null {
   return stationId;
 }
 
+function parsePeriodo(raw: unknown): number | null {
+  const periodo = String(raw ?? '30d');
+  if (!Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)) return 30;
+  return DIAS_POR_PERIODO[periodo];
+}
+
+function occupancyRatio(row: Row): number {
+  const total = typeof row.total_connectors === 'number' && row.total_connectors > 0 ? row.total_connectors : 2;
+  
+  let free = 0;
+  if (typeof row.available_connectors === 'number' && row.available_connectors >= 0) {
+    free = row.available_connectors;
+  } else if (row.is_available) {
+    free = 1;
+  } else {
+    free = 0;
+  }
+  
+  const freeSafe = Math.max(0, Math.min(total, free));
+  return total > 0 ? (1 - freeSafe / total) : 0;
+}
+
 export default defineEventHandler(async (event) => {
-  const query   = getQuery(event);
-  const periodo = String(query.periodo ?? '7d');
-  const dias = Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)
-    ? DIAS_POR_PERIODO[periodo]
-    : 7;
+  const query = getQuery(event);
   const stationId = parseStationId(query.station_id);
+  const dias = parsePeriodo(query.periodo);
 
   const supabase = await serverSupabaseClient(event);
 
-  // Query directa estable para todos los casos (evita discrepancias de RPC en producción).
-  const desde = dias === null ? null : new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
+  let queryLogs = supabase
+    .from('charging_logs')
+    .select('created_at, is_available, available_connectors, total_connectors')
+    .order('created_at', { ascending: true });
 
-  const chunkSize = 1000;
-  const maxRows = 30000;
-  const rawData: Array<{ created_at: string; is_available: boolean; station_id: string }> = [];
+  if (dias !== null) {
+    const since = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+    queryLogs = queryLogs.gte('created_at', since);
+  }
 
-  for (let offset = 0; offset < maxRows; offset += chunkSize) {
-    let pageQuery = supabase
+  if (stationId) {
+    queryLogs = queryLogs.eq('station_id', stationId);
+  }
+
+  const { data, error } = await queryLogs;
+  if (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: `Error al calcular heatmap: ${error.message}`,
+    });
+  }
+
+  const rows = (data ?? []) as Row[];
+  
+  // Si no hay datos específicos del cargador, intentar con datos globales
+  let finalRows = rows;
+  if (rows.length === 0 && stationId) {
+    let fallbackQuery = supabase
       .from('charging_logs')
-      .select('created_at, is_available, station_id')
-      .order('created_at', { ascending: true })
-      .range(offset, offset + chunkSize - 1);
-
-    if (desde) {
-      pageQuery = pageQuery.gte('created_at', desde.toISOString());
+      .select('created_at, is_available, available_connectors, total_connectors')
+      .order('created_at', { ascending: true });
+    
+    if (dias !== null) {
+      const since = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+      fallbackQuery = fallbackQuery.gte('created_at', since);
     }
+    
+    const { data: fallbackData } = await fallbackQuery;
+    finalRows = (fallbackData ?? []) as Row[];
+  }
 
-    if (stationId) {
-      pageQuery = pageQuery.eq('station_id', stationId);
+  // Agrupar por día de semana + hora
+  const accByWeekdayHour: Record<string, { occ: number; samples: number }> = {};
+
+  for (const row of finalRows) {
+    const date = new Date(row.created_at);
+    const dayIndex = date.getDay(); // 0 = domingo, 6 = sábado
+    const hour = date.getHours();
+    const key = `${dayIndex}-${hour}`;
+    
+    if (!accByWeekdayHour[key]) {
+      accByWeekdayHour[key] = { occ: 0, samples: 0 };
     }
+    
+    accByWeekdayHour[key].occ += occupancyRatio(row);
+    accByWeekdayHour[key].samples += 1;
+  }
 
-    const { data: pageData, error: pageError } = await pageQuery;
+  // Crear puntos del heatmap (7 días × 24 horas)
+  const points: any[] = [];
 
-    if (pageError) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: `Error al consultar heatmap: ${pageError.message}`,
+  for (let dia = 0; dia < 7; dia++) {
+    for (let hora = 0; hora < 24; hora++) {
+      const key = `${dia}-${hora}`;
+      const item = accByWeekdayHour[key] ?? { occ: 0, samples: 0 };
+      
+      points.push({
+        dia,
+        hora,
+        porcentaje: item.samples ? Math.round((item.occ / item.samples) * 100) : -1, // -1 = sin datos
       });
     }
-
-    const rows = pageData ?? [];
-    rawData.push(...rows);
-
-    if (rows.length < chunkSize) break;
   }
 
-  // Agrupar en memoria usando siempre hora local de Madrid.
-  const mapa: Record<string, { total: number; ocupados: number }> = {};
-
-  for (const fila of rawData ?? []) {
-    const fecha = new Date(fila.created_at);
-    if (Number.isNaN(fecha.getTime())) continue;
-
-    const zoned = getMadridDayHour(fecha);
-    if (!zoned) continue;
-
-    const { dia, hora } = zoned;
-
-    if (!Number.isFinite(dia) || !Number.isFinite(hora)) continue;
-    const clave = `${dia}-${hora}`;
-
-    if (!mapa[clave]) mapa[clave] = { total: 0, ocupados: 0 };
-    mapa[clave].total++;
-    if (!fila.is_available) mapa[clave].ocupados++;
-  }
-
-  const datos = Object.entries(mapa).map(([clave, val]) => {
-    const [dia, hora] = clave.split('-').map(Number);
-    return {
-      dia,
-      hora,
-      totalRegistros: val.total,
-      ocupados:       val.ocupados,
-      porcentaje:     Math.round((val.ocupados / val.total) * 100),
-    };
-  });
-
-  return { datos };
+  return {
+    periodoDias: dias,
+    stationId,
+    points,
+    totalSamples: finalRows.length,
+    usedFallback: rows.length === 0 && stationId,
+  };
 });

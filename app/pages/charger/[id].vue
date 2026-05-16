@@ -85,6 +85,19 @@ const { data: anomaliesData, pending: anomaliesPending } = useFetch('/api/analyt
 
 const stationHealth = computed(() => healthData.value?.porEstacion?.[0] ?? null);
 
+// ETA - Probabilidad al llegar
+const etaMinutes = ref(30);
+
+const { data: etaData, pending: etaPending } = useFetch('/api/analytics/eta', {
+  query: computed(() => ({
+    minutes: etaMinutes.value,
+    periodo: 'all',
+    station_id: stationId.value,
+  })),
+  watch: [etaMinutes, stationId],
+  lazy: true,
+});
+
 const runtimeConfig = useRuntimeConfig();
 const siteUrl = (runtimeConfig.public.siteUrl || 'https://cargadores-aspe.onlineexpansions.com').replace(/\/+$/, '');
 const canonicalUrl = computed(() => `${siteUrl}/charger/${encodeURIComponent(stationId.value || '')}`);
@@ -106,7 +119,7 @@ useHead(() => ({
   <main class="min-h-screen bg-[#020617] px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
     <div class="mx-auto max-w-5xl space-y-5">
       <div class="mb-4">
-          <!-- Removed the 'Volver al dashboard' button -->
+          <NuxtLink to="/" class="inline-flex rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold hover:border-slate-500">Volver al dashboard</NuxtLink>
       </div>
       <div class="flex justify-end mb-2">
         <FilterButtons v-model="periodo" />
@@ -116,6 +129,47 @@ useHead(() => ({
         <h1 class="mt-1 text-2xl font-extrabold text-white sm:text-3xl">{{ stationId }}</h1>
         <p class="mt-2 text-sm text-slate-300">Detalle de salud técnica, ocupación y tiempo estimado de liberación.</p>
       </header>
+
+      <!-- Probabilidad al llegar -->
+      <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+        <div class="mb-3 flex items-center justify-between gap-3">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Probabilidad al llegar
+          </h2>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-for="m in [5, 15, 30, 60]"
+              :key=`eta-charger-${m}`
+              class="rounded-full border px-3 py-1 text-xs transition-colors"
+              :class="etaMinutes === m ? 'border-cyan-500/60 bg-cyan-500/15 text-cyan-200' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-600'"
+              @click="etaMinutes = m"
+            >
+              {{ m }} min
+            </button>
+          </div>
+        </div>
+
+        <div v-if="etaPending" class="h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+        <div v-else class="space-y-3">
+          <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <p class="text-xs text-slate-500">Disponibilidad en {{ etaMinutes }} min</p>
+            <p class="mt-1 text-2xl font-bold" :class="(etaData?.estacionRecomendada?.probabilidadLibre ?? 0) > 0 ? 'text-emerald-400' : 'text-red-400'">{{ etaData?.estacionRecomendada?.probabilidadLibre ?? 0 }}%</p>
+            <p class="text-[11px] text-slate-500">{{ etaData?.estacionRecomendada?.muestras ?? 0 }} muestras históricas</p>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+            <template v-if="(etaData?.estacionRecomendada?.probabilidadLibre ?? 0) > 0">
+              <p class="text-xs text-slate-500">Previsión</p>
+              <p class="mt-1 text-sm font-semibold text-emerald-400">✓ Probablemente libre</p>
+              <p class="mt-1 text-[11px] text-slate-400">Según el histórico a esta hora ({{ etaData?.targetDay ?? '-' }}){{ etaData?.targetHour !== undefined ? ` a las ${etaData.targetHour}:00` : '' }}, hay {{ etaData?.estacionRecomendada?.probabilidadLibre ?? 0 }}% probabilidad de encontrar cargador disponible.</p>
+            </template>
+            <template v-else>
+              <p class="text-xs text-slate-500">Previsión</p>
+              <p class="mt-1 text-sm font-semibold text-red-400">✗ Probablemente ocupado</p>
+              <p class="mt-1 text-[11px] text-slate-400">Según el histórico, es muy poco probable que haya disponibilidad en {{ etaMinutes }} minutos.</p>
+            </template>
+          </div>
+        </div>
+      </section>
 
       <section class="grid grid-cols-1 gap-4 md:grid-cols-4">
         <article class="rounded-xl border border-slate-800 bg-slate-900/60 p-4 md:col-span-2">
@@ -164,16 +218,11 @@ useHead(() => ({
         <article class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
           <h2 class="text-xs uppercase tracking-wider text-slate-400">Ocupación por día</h2>
           <div v-if="occDayPending" class="mt-3 h-24 animate-pulse rounded-lg bg-slate-900" />
-          <div v-else-if="occDayData?.points?.length" class="mt-3 space-y-2" :class="occDayData.points[0]?.isAverage ? '' : 'max-h-80 overflow-y-auto'">
-            <div v-for="point in occDayData.points" :key="`d-${point.dateStr ?? point.dayIndex}`" class="space-y-1">
+          <div v-else-if="occDayData?.points?.length" class="mt-3 space-y-2">
+            <div v-for="point in occDayData.points" :key="`d-${point.dayIndex}`" class="space-y-1">
               <div class="flex justify-between text-xs">
                 <span :class="point.samples ? 'text-slate-300' : 'text-slate-500'">
-                  <template v-if="point.isAverage">
-                    {{ point.dayLabel }} (media)
-                  </template>
-                  <template v-else>
-                    {{ point.dateLabel }} ({{ point.dayLabel }})
-                  </template>
+                  {{ point.dayLabel }} (media)
                 </span>
                 <span :class="point.samples ? 'text-slate-300' : 'text-slate-600'">
                   {{ point.occupancyPct }}%
@@ -186,61 +235,58 @@ useHead(() => ({
                   :style="{ width: `${Math.max(point.occupancyPct, 1)}%` }" 
                 />
               </div>
-              <p v-if="!point.samples" class="text-[10px] text-slate-600">Sin datos</p>
             </div>
           </div>
           <p v-else class="mt-3 text-xs text-slate-500">Sin datos suficientes para mostrar la ocupación por día.</p>
         </article>
       </section>
 
-      <NuxtLink to="/" class="inline-flex rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold hover:border-slate-500">Volver al dashboard</NuxtLink>
+      <!-- Heatmap semanal -->
+      <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+        <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Mapa de calor semanal</h2>
+        <div v-if="heatmapPending" class="mt-3 h-48 animate-pulse rounded-xl bg-slate-900" />
+        <WeeklyHeatmap v-else-if="heatmapData?.points?.length" :datos="heatmapData.points" class="mt-3" />
+        <p v-else class="mt-3 text-xs text-slate-500">Sin datos suficientes para mostrar el mapa de calor.</p>
+      </section>
 
-        <!-- Heatmap semanal -->
+      <!-- Insights y anomalías -->
+      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Mapa de calor semanal</h2>
-          <div v-if="heatmapPending" class="mt-3 h-48 animate-pulse rounded-xl bg-slate-900" />
-          <WeeklyHeatmap v-else-if="heatmapData" :datos="heatmapData.datos ?? []" class="mt-3" />
-          <p v-else class="mt-3 text-xs text-slate-500">Sin datos suficientes.</p>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Insights automáticos</h2>
+          <div v-if="recommendationsPending" class="mt-3 h-24 animate-pulse rounded-xl bg-slate-900" />
+          <ul v-else-if="recommendationsData?.recommendations?.length" class="mt-3 space-y-2 text-xs text-slate-300">
+            <li
+              v-for="(rec, i) in recommendationsData.recommendations"
+              :key="`rec-${i}`"
+              class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2"
+            >
+              {{ rec.text }}
+            </li>
+          </ul>
+          <p v-else class="mt-3 text-xs text-slate-500">No hay insights para este cargador.</p>
         </section>
 
-        <!-- Insights y anomalías -->
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Insights automáticos</h2>
-            <div v-if="recommendationsPending" class="mt-3 h-24 animate-pulse rounded-xl bg-slate-900" />
-            <ul v-else-if="recommendationsData?.recommendations?.length" class="mt-3 space-y-2 text-xs text-slate-300">
-              <li
-                v-for="(rec, i) in recommendationsData.recommendations"
-                :key="`rec-${i}`"
-                class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2"
+        <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Anomalías detectadas</h2>
+          <div v-if="anomaliesPending" class="mt-3 h-24 animate-pulse rounded-xl bg-slate-900" />
+          <ul v-else-if="anomaliesData?.anomalies?.length" class="mt-3 space-y-2 text-xs text-slate-300">
+            <li
+              v-for="(a, i) in anomaliesData.anomalies"
+              :key="`anom-${i}`"
+              class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2"
+            >
+              <p
+                class="font-semibold"
+                :class="a.severity === 'high' ? 'text-rose-300' : a.severity === 'medium' ? 'text-amber-300' : 'text-slate-300'"
               >
-                {{ rec.text }}
-              </li>
-            </ul>
-            <p v-else class="mt-3 text-xs text-slate-500">No hay insights para este cargador.</p>
-          </section>
-
-          <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-            <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Anomalías detectadas</h2>
-            <div v-if="anomaliesPending" class="mt-3 h-24 animate-pulse rounded-xl bg-slate-900" />
-            <ul v-else-if="anomaliesData?.anomalies?.length" class="mt-3 space-y-2 text-xs text-slate-300">
-              <li
-                v-for="(a, i) in anomaliesData.anomalies"
-                :key="`anom-${i}`"
-                class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2"
-              >
-                <p
-                  class="font-semibold"
-                  :class="a.severity === 'high' ? 'text-rose-300' : a.severity === 'medium' ? 'text-amber-300' : 'text-slate-300'"
-                >
-                  {{ a.type }}
-                </p>
-                <p class="text-slate-400">{{ a.description }}</p>
-              </li>
-            </ul>
-            <p v-else class="mt-3 text-xs text-slate-500">No se detectan anomalías.</p>
-          </section>
-        </div>
+                {{ a.type }}
+              </p>
+              <p class="text-slate-400">{{ a.description }}</p>
+            </li>
+          </ul>
+          <p v-else class="mt-3 text-xs text-slate-500">No se detectan anomalías.</p>
+        </section>
+      </div>
 
     </div>
   </main>
