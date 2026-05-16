@@ -139,7 +139,7 @@ useHead(() => ({
           <div class="flex flex-wrap gap-2">
             <button
               v-for="m in [5, 15, 30, 60]"
-              :key=`eta-charger-${m}`
+              :key="`eta-charger-${m}`"
               class="rounded-full border px-3 py-1 text-xs transition-colors"
               :class="etaMinutes === m ? 'border-cyan-500/60 bg-cyan-500/15 text-cyan-200' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-600'"
               @click="etaMinutes = m"
