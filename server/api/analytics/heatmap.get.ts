@@ -57,6 +57,35 @@ function occupancyRatio(row: Row): number {
   return total > 0 ? (1 - freeSafe / total) : 0;
 }
 
+// Función auxiliar para paginar y traer todos los datos
+async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 1000): Promise<Row[]> {
+  let allRows: Row[] = [];
+  let offset = 0;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const { data, error } = await baseQuery.range(offset, offset + pageSize - 1);
+    
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Error al obtener datos: ${error.message}`,
+      });
+    }
+    
+    const rows = (data ?? []) as Row[];
+    allRows = allRows.concat(rows);
+    
+    if (rows.length < pageSize) {
+      hasMore = false;
+    } else {
+      offset += pageSize;
+    }
+  }
+  
+  return allRows;
+}
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const stationId = parseStationId(query.station_id);
@@ -64,45 +93,49 @@ export default defineEventHandler(async (event) => {
 
   const supabase = await serverSupabaseClient(event);
 
-  let queryLogs = supabase
-    .from('charging_logs')
-    .select('created_at, is_available, available_connectors, total_connectors')
-    .order('created_at', { ascending: true });
-
-  if (dias !== null) {
-    const since = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
-    queryLogs = queryLogs.gte('created_at', since);
-  }
-
-  if (stationId) {
-    queryLogs = queryLogs.eq('station_id', stationId);
-  }
-
-  const { data, error } = await queryLogs;
-  if (error) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Error al calcular heatmap: ${error.message}`,
-    });
-  }
-
-  const rows = (data ?? []) as Row[];
-  
-  // Si no hay datos específicos del cargador, intentar con datos globales
-  let finalRows = rows;
-  if (rows.length === 0 && stationId) {
-    let fallbackQuery = supabase
+  // Construir query base sin aplicar limit/offset aún
+  const buildQuery = () => {
+    let q = supabase
       .from('charging_logs')
       .select('created_at, is_available, available_connectors, total_connectors')
       .order('created_at', { ascending: true });
-    
+
     if (dias !== null) {
-      const since = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
-      fallbackQuery = fallbackQuery.gte('created_at', since);
+      const now = new Date();
+      const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dias, 0, 0, 0, 0));
+      const since = startDate.toISOString();
+      q = q.gte('created_at', since);
     }
-    
-    const { data: fallbackData } = await fallbackQuery;
-    finalRows = (fallbackData ?? []) as Row[];
+
+    if (stationId) {
+      q = q.eq('station_id', stationId);
+    }
+
+    return q;
+  };
+
+  // Obtener todos los datos paginando
+  let finalRows = await fetchAllRows(supabase, buildQuery());
+  
+  // Si no hay datos específicos del cargador, intentar con datos globales
+  if (finalRows.length === 0 && stationId) {
+    const buildFallbackQuery = () => {
+      let q = supabase
+        .from('charging_logs')
+        .select('created_at, is_available, available_connectors, total_connectors')
+        .order('created_at', { ascending: true });
+
+      if (dias !== null) {
+        const now = new Date();
+        const startDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dias, 0, 0, 0, 0));
+        const since = startDate.toISOString();
+        q = q.gte('created_at', since);
+      }
+
+      return q;
+    };
+
+    finalRows = await fetchAllRows(supabase, buildFallbackQuery());
   }
 
   // Agrupar por día de semana + hora
@@ -110,8 +143,8 @@ export default defineEventHandler(async (event) => {
 
   for (const row of finalRows) {
     const date = new Date(row.created_at);
-    const dayIndex = date.getDay(); // 0 = domingo, 6 = sábado
-    const hour = date.getHours();
+    const dayIndex = date.getUTCDay(); // 0 = domingo, 6 = sábado
+    const hour = date.getUTCHours();
     const key = `${dayIndex}-${hour}`;
     
     if (!accByWeekdayHour[key]) {
@@ -141,8 +174,8 @@ export default defineEventHandler(async (event) => {
   return {
     periodoDias: dias,
     stationId,
-    points,
+    datos: points,
     totalSamples: finalRows.length,
-    usedFallback: rows.length === 0 && stationId,
+    usedFallback: false,
   };
 });

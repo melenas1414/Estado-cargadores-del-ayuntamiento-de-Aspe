@@ -81,10 +81,6 @@ function ocultarTooltip() {
 
 <template>
   <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-    <h2 class="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-400">
-      Mapa de Calor Semanal · Ocupación por Hora
-    </h2>
-
     <div class="relative overflow-x-auto" data-heatmap>
       <!-- Tooltip flotante -->
       <div

@@ -90,6 +90,35 @@ function mejorHoraConDesempate(
   return mejoresCandidatos[0];
 }
 
+// Función auxiliar para paginar y traer todos los datos
+async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 1000): Promise<any[]> {
+  let allRows: any[] = [];
+  let offset = 0;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const { data, error } = await baseQuery.range(offset, offset + pageSize - 1);
+    
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Error al obtener datos: ${error.message}`,
+      });
+    }
+    
+    const rows = (data ?? []) as any[];
+    allRows = allRows.concat(rows);
+    
+    if (rows.length < pageSize) {
+      hasMore = false;
+    } else {
+      offset += pageSize;
+    }
+  }
+  
+  return allRows;
+}
+
 export default defineEventHandler(async (event) => {
   const supabase = await serverSupabaseClient(event);
   const query = getQuery(event);
@@ -101,23 +130,22 @@ export default defineEventHandler(async (event) => {
   const diaObjetivo = fechaObjetivo.getDay(); // 0 = Dom … 6 = Sáb
   const haceVentana = new Date(ahora.getTime() - VENTANA_HISTORICA_DIAS * 24 * 60 * 60 * 1000);
 
-  let queryLogs = supabase
-    .from('charging_logs')
-    .select('created_at, is_available, available_connectors')
-    .gte('created_at', haceVentana.toISOString());
+  // Construir query con paginación
+  const buildQuery = () => {
+    let q = supabase
+      .from('charging_logs')
+      .select('created_at, is_available, available_connectors')
+      .gte('created_at', haceVentana.toISOString())
+      .order('created_at', { ascending: true });
 
-  if (stationId) {
-    queryLogs = queryLogs.eq('station_id', stationId);
-  }
+    if (stationId) {
+      q = q.eq('station_id', stationId);
+    }
 
-  const { data, error } = await queryLogs;
+    return q;
+  };
 
-  if (error) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Error al calcular predicción: ${error.message}`,
-    });
-  }
+  const data = await fetchAllRows(supabase, buildQuery());
 
   // ─── Agrupar por hora para día objetivo y fallback global ────────────────
   const porHoraWeekday: Record<number, { total: number; disponibles: number }> = {};
@@ -134,8 +162,8 @@ export default defineEventHandler(async (event) => {
 
   for (const fila of data ?? []) {
     const fecha = new Date(fila.created_at);
-    const diaSemana = fecha.getDay();
-    const hora = fecha.getHours();
+    const diaSemana = fecha.getUTCDay();
+    const hora = fecha.getUTCHours();
 
     diasHistoricosConDatosSet.add(toISODate(fecha));
     diasConDatosPorDiaSemana[diaSemana].add(toISODate(fecha));

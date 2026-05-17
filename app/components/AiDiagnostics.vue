@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, withDefaults } from 'vue';
 import { AlertTriangle, Gauge, Activity, Sparkles, MapPinned } from 'lucide-vue-next';
 
 type Averia = {
@@ -22,19 +22,27 @@ type ZonaPrioritaria = {
   recomendacion: string;
 };
 
-const props = defineProps<{
-  saturacion: {
-    porcentaje: number;
-    minutosSinConectoresLibres: number;
-    muestraMinutos: number;
-    sugerencia: string;
-    conectoresExtraRecomendados: number;
-    puntosExtraRecomendados: number;
-  };
-  averias: Averia[];
-  insights: string[];
-  zonasPrioritarias?: ZonaPrioritaria[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    saturacion: {
+      porcentaje: number;
+      minutosSinConectoresLibres: number;
+      muestraMinutos: number;
+      sugerencia: string;
+      conectoresExtraRecomendados: number;
+      puntosExtraRecomendados: number;
+    };
+    averias: Averia[];
+    insights: string[];
+    zonasPrioritarias?: ZonaPrioritaria[];
+    showInsights?: boolean;
+    showZonesAndBeyond?: boolean;
+  }>(),
+  {
+    showInsights: true,
+    showZonesAndBeyond: true,
+  },
+);
 
 function nivelClase(nivel: Averia['nivel']): string {
   if (nivel === 'critical') return 'text-rose-300 bg-rose-500/10 border-rose-500/30';
@@ -70,7 +78,7 @@ const saludTelemetria = computed(() => {
 
 <template>
   <div class="space-y-4">
-    <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+    <div v-if="!showZonesAndBeyond" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
       <div class="mb-3 flex items-center gap-2">
         <Gauge class="h-4 w-4 text-blue-400" />
         <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Diagnostico de red</h3>
@@ -95,7 +103,7 @@ const saludTelemetria = computed(() => {
       </div>
     </div>
 
-    <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+    <div v-if="!showZonesAndBeyond" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
       <div class="mb-3 flex items-center gap-2">
         <Activity class="h-4 w-4 text-cyan-400" />
         <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Salud de telemetria</h3>
@@ -124,13 +132,13 @@ const saludTelemetria = computed(() => {
       </div>
     </div>
 
-    <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+    <div v-if="showZonesAndBeyond" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
       <div class="mb-3 flex items-center gap-2">
         <MapPinned class="h-4 w-4 text-fuchsia-400" />
         <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Zonas prioritarias para refuerzo</h3>
       </div>
 
-      <div v-if="zonasPrioritarias?.length" class="space-y-2">
+      <div v-if="zonasPrioritarias?.length" class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <div
           v-for="z in zonasPrioritarias"
           :key="z.zona"
@@ -152,12 +160,12 @@ const saludTelemetria = computed(() => {
       <p v-else class="text-sm text-slate-500">Sin datos suficientes para priorizar zonas.</p>
     </div>
 
-    <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+    <div v-if="showZonesAndBeyond" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
       <div class="mb-3 flex items-center gap-2">
         <AlertTriangle class="h-4 w-4 text-amber-400" />
         <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Posibles averias</h3>
       </div>
-      <div v-if="averias.length" class="space-y-2">
+      <div v-if="averias.length" class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <div
           v-for="a in averias"
           :key="a.station_id"
@@ -173,7 +181,7 @@ const saludTelemetria = computed(() => {
       <p v-else class="text-sm text-slate-500">Sin incidencias detectadas.</p>
     </div>
 
-    <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+    <div v-if="showZonesAndBeyond && showInsights" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
       <div class="mb-3 flex items-center gap-2">
         <Sparkles class="h-4 w-4 text-fuchsia-400" />
         <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Insights automaticos</h3>

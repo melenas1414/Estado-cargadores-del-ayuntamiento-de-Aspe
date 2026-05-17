@@ -82,7 +82,7 @@ async function renderPoints() {
     })
 
     marker.bindPopup(
-      `<strong>${p.stationId}</strong><br>${p.locationName}<br><span>${p.libres}/${p.total} libres</span><br><a href="${p.googleUrl}" target="_blank" rel="noopener noreferrer">Abrir en Google Maps</a>`,
+      `<div style="font-size: 0.875rem; min-width: 200px;"><strong style="display: block; margin-bottom: 0.5rem;">${p.stationId}</strong><a href="/charger/${p.stationId}" style="color: #0ea5e9; text-decoration: none; font-weight: 500; display: inline-flex; align-items: center; gap: 0.25rem;"><span>${p.locationName}</span><span style="font-size: 0.625rem; color: #94a3b8;">→</span></a><br><span style="color: #cbd5e1; display: block; margin: 0.5rem 0;">${p.libres}/${p.total} conectores libres</span><a href="${p.googleUrl}" target="_blank" rel="noopener noreferrer" style="color: #0ea5e9; text-decoration: none; font-size: 0.75rem;">Abrir en Google Maps ↗</a></div>`,
     )
 
     marker.addTo(layerGroup)

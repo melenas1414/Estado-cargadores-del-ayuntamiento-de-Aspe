@@ -216,10 +216,17 @@ const potenciaTexto = computed(() => {
       <!-- Botón ficha individual -->
       <NuxtLink
         :to="`/charger/${stationId}`"
-        class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-700/60 bg-slate-800/60 px-3 py-2 text-[11px] font-medium text-slate-300 transition-all hover:border-slate-600 hover:bg-slate-700/60 hover:text-white"
+        class="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
+        :class="
+          tonoEstado === 'libre'
+            ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+            : tonoEstado === 'parcial'
+              ? 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25'
+              : 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25'
+        "
       >
         <BarChart2 class="h-3.5 w-3.5" />
-        Ver análisis
+        Ver detalles
       </NuxtLink>
     </div>
   </div>

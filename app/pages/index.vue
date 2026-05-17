@@ -5,18 +5,16 @@
  * Flujo de datos:
  * 1. useFetch('/api/chargers/current')         → estado en tiempo real
  * 2. useFetch('/api/analytics/heatmap?...')    → heatmap semanal
- * 3. useFetch('/api/analytics/prediction')     → predicción horaria
- * 4. useFetch('/api/analytics/metrics?...')    → KPIs de uso
+ * 3. useFetch('/api/analytics/metrics?...')    → KPIs de uso
  *
  * Los llamados de análisis se reactivan cuando cambia el período seleccionado.
  */
-import { Zap, RefreshCw, MapPin, Wifi, LayoutPanelTop, Map as MapIcon, BrainCircuit, Activity } from 'lucide-vue-next';
+import { Zap, RefreshCw, MapPin, Wifi, LayoutPanelTop, Map as MapIcon, BrainCircuit, Activity, TrendingUp, Navigation, AlertTriangle } from 'lucide-vue-next';
 
 type Periodo = 'today' | '7d' | '30d' | 'all';
-type HorizontePrediccion = number;
 type FiltroCargador = 'all' | string;
 type OpcionCargador = { id: string; nombre: string };
-type DashboardTab = 'resumen' | 'mapa' | 'inteligencia' | 'diagnostico';
+type DashboardTab = 'resumen' | 'mapa' | 'inteligencia' | 'diagnostico' | 'expansion';
 type DashboardTabTheme = {
   button: string;
   panel: string;
@@ -35,6 +33,7 @@ const DASHBOARD_TABS: Array<{ id: DashboardTab; label: string; icon: any }> = [
   { id: 'mapa', label: 'Mapa', icon: MapIcon },
   { id: 'inteligencia', label: 'Inteligencia', icon: BrainCircuit },
   { id: 'diagnostico', label: 'Diagnóstico', icon: Activity },
+  { id: 'expansion', label: 'Expansión', icon: TrendingUp },
 ];
 
 const TAB_PATHS: Record<DashboardTab, string> = {
@@ -42,6 +41,7 @@ const TAB_PATHS: Record<DashboardTab, string> = {
   mapa: '/mapa',
   inteligencia: '/inteligencia',
   diagnostico: '/diagnostico',
+  expansion: '/expansion',
 };
 
 const PATH_TO_TAB: Record<string, DashboardTab> = {
@@ -50,6 +50,7 @@ const PATH_TO_TAB: Record<string, DashboardTab> = {
   '/mapa': 'mapa',
   '/inteligencia': 'inteligencia',
   '/diagnostico': 'diagnostico',
+  '/expansion': 'expansion',
 };
 
 const TAB_SEO: Record<DashboardTab, {
@@ -92,6 +93,14 @@ const TAB_SEO: Record<DashboardTab, {
     ogDescription: 'Estado de salud de la red de cargadores y prioridades de mejora en Aspe.',
     breadcrumbName: 'Diagnóstico',
   },
+  expansion: {
+    title: 'Mapa de Expansión de Cargadores | Ubicaciones Recomendadas para Aspe',
+    description: 'Análisis inteligente de ubicaciones recomendadas para nuevos puntos de recarga basado en demanda real, cobertura geográfica e infraestructura de parkings en Aspe.',
+    keywords: 'expansion cargadores aspe, nuevos puntos recarga aspe, ubicaciones recomendadas cargadores, planificacion recarga aspe',
+    ogTitle: 'Mapa de Expansión de Cargadores',
+    ogDescription: 'Análisis inteligente de ubicaciones recomendadas para nuevos puntos de carga en Aspe.',
+    breadcrumbName: 'Expansión',
+  },
 };
 
 const TAB_THEMES: Record<DashboardTab, DashboardTabTheme> = {
@@ -123,12 +132,21 @@ const TAB_THEMES: Record<DashboardTab, DashboardTabTheme> = {
     title: 'text-rose-300',
     badge: 'bg-rose-500/15 text-rose-100 ring-rose-500/35',
   },
+  expansion: {
+    button: 'border-purple-400/35 bg-purple-400/10 text-purple-100 shadow-[0_0_30px_-12px_rgba(168,85,247,0.8)]',
+    panel: 'bg-gradient-to-br from-purple-500/10 via-slate-900/70 to-slate-950/80',
+    panelRing: 'ring-purple-500/25',
+    title: 'text-purple-300',
+    badge: 'bg-purple-500/15 text-purple-100 ring-purple-500/35',
+  },
 };
 
 const RECOMMENDED_LINKS = {
   tariffComparator: 'https://zoeconecta.com/?fluent-form=9',
   teslaReferral: 'https://www.tesla.com/referral/santiago767265',
 } as const;
+
+const maxWidth = 1280;
 
 type RecommendedLinksVariant = 'A' | 'B';
 type RecommendedLinksPosition = 'top' | 'bottom';
@@ -155,8 +173,8 @@ const STATION_STREETS: Record<string, string> = {
 
 // ─── Estado de período seleccionado ─────────────────────────────────────────
 const periodo = ref<Periodo>('7d');
-const diasPrediccion = ref<HorizontePrediccion>(0);
 const cargadorSeleccionado = ref<FiltroCargador>('all');
+const tooltipActivo = ref<string | null>(null);
 const route = useRoute();
 const { trackAction } = useAnalytics();
 const recommendedLinksVariant = useCookie<RecommendedLinksVariant>('ab_recommended_links_variant', {
@@ -178,6 +196,14 @@ function tabDesdePath(path: string): DashboardTab {
   const normalizado = normalizarPath(path);
   return PATH_TO_TAB[normalizado] ?? 'resumen';
 }
+
+const toggleTooltip = (id: string) => {
+  tooltipActivo.value = tooltipActivo.value === id ? null : id;
+};
+
+const closeTooltip = () => {
+  tooltipActivo.value = null;
+};
 
 const activeTab = ref<DashboardTab>(props.initialTab ?? tabDesdePath(route.path));
 const recommendedLinksPosition = computed<RecommendedLinksPosition>(() => {
@@ -229,19 +255,6 @@ const {
 } = useFetch('/api/analytics/heatmap', {
   query: computed(() => ({ periodo: periodo.value })),
   watch: [periodo],
-  lazy: true,
-});
-
-// ─── Análisis: predicción ────────────────────────────────────────────────────
-const {
-  data:    prediccionData,
-  pending: prediccionPending,
-  refresh: refrescarPrediccion,
-} = useFetch('/api/analytics/prediction', {
-  query: computed(() => ({
-    dias: diasPrediccion.value,
-  })),
-  watch: [diasPrediccion],
   lazy: true,
 });
 
@@ -349,7 +362,6 @@ async function refrescarTodo() {
     refrescarHeatmap(),
     refrescarMetricas(),
     refrescarDiagnostico(),
-    refrescarPrediccion(),
     refrescarEta(),
     refrescarDuracionOcupacion(),
     refrescarSaludCargadores(),
@@ -383,7 +395,6 @@ async function pollingInteligente() {
         refrescarHeatmap(),
         refrescarMetricas(),
         refrescarDiagnostico(),
-        refrescarPrediccion(),
         refrescarEta(),
         refrescarDuracionOcupacion(),
         refrescarSaludCargadores(),
@@ -438,10 +449,6 @@ watch(periodo, (value) => {
   trackAction('filter_period_change', { value });
 });
 
-watch(diasPrediccion, (value) => {
-  trackAction('prediction_horizon_change', { value });
-});
-
 watch(cargadorSeleccionado, (value) => {
   trackAction('station_filter_change', { value });
 });
@@ -450,22 +457,6 @@ const cargadorSeleccionadoLabel = computed(() => {
   if (cargadorSeleccionado.value === 'all') return 'Todos los cargadores';
   const found = opcionesCargador.value.find((op: OpcionCargador) => op.id === cargadorSeleccionado.value);
   return found ? `${found.id} · ${found.nombre}` : cargadorSeleccionado.value;
-});
-
-const opcionesPronosticoFecha = computed<Array<{ dias: number; fecha: string; diaSemana: string }>>(
-  () => prediccionData.value?.diasDisponibles ?? [],
-);
-
-function etiquetaPronosticoFecha(opcion: { dias: number; fecha: string; diaSemana: string }): string {
-  if (opcion.dias === 0) return `Hoy (${opcion.fecha})`;
-  if (opcion.dias === 1) return `Mañana (${opcion.fecha})`;
-  return `${opcion.diaSemana} · ${opcion.fecha}`;
-}
-
-watch(opcionesPronosticoFecha, (opciones) => {
-  if (!opciones.length) return;
-  const existe = opciones.some((opcion) => opcion.dias === diasPrediccion.value);
-  if (!existe) diasPrediccion.value = opciones[0].dias as HorizontePrediccion;
 });
 
 const cargadorSeleccionadoDetalle = computed(() => {
@@ -517,6 +508,22 @@ const activeTabLabel = computed<string>(() => {
   const found = DASHBOARD_TABS.find((tab) => tab.id === activeTab.value);
   return found?.label ?? 'Resumen';
 });
+
+function claseColorOcupacion(tasa: number): string {
+  if (tasa < 40) return 'text-emerald-400';
+  if (tasa < 70) return 'text-amber-400';
+  return 'text-rose-400';
+}
+
+function anchoBarraOcupacion(tasa: number): string {
+  return `${Math.min(Math.max(tasa, 0), 100)}%`;
+}
+
+function claseBarraOcupacion(tasa: number): string {
+  if (tasa < 40) return 'bg-emerald-500';
+  if (tasa < 70) return 'bg-amber-500';
+  return 'bg-rose-500';
+}
 
 function tabButtonClass(tabId: DashboardTab): string {
   if (activeTab.value === tabId) {
@@ -640,6 +647,7 @@ function classesEstadoPunto(libres: number, total: number) {
     return {
       card: 'border-rose-500/30 bg-rose-500/10 text-rose-300 hover:border-rose-400/60 hover:text-rose-200',
       detail: 'text-rose-300',
+      tono: 'ocupado',
     };
   }
 
@@ -647,12 +655,14 @@ function classesEstadoPunto(libres: number, total: number) {
     return {
       card: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:border-emerald-400/60 hover:text-emerald-200',
       detail: 'text-emerald-300',
+      tono: 'libre',
     };
   }
 
   return {
     card: 'border-amber-500/30 bg-amber-500/10 text-amber-300 hover:border-amber-400/60 hover:text-amber-200',
     detail: 'text-amber-300',
+    tono: 'parcial',
   };
 }
 
@@ -884,13 +894,13 @@ if (!props.disableSeo) {
 
 <template>
   <!-- Tesla M3 Popup -->
-  <TeslaM3Popup />
+  <TeslaM3Popup v-if="activeTab !== 'expansion'" />
 
   <main class="min-h-screen bg-[radial-gradient(1200px_600px_at_10%_-10%,rgba(16,185,129,0.08),transparent),radial-gradient(1000px_500px_at_90%_-5%,rgba(34,211,238,0.08),transparent),#020617] px-4 py-6 sm:px-6 lg:px-8">
     <div class="mx-auto max-w-6xl space-y-8">
 
       <!-- ════════ HEADER ════════ -->
-      <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between" @click.self="closeTooltip()">
         <div>
           <!-- Indicador de estado global -->
           <div
@@ -902,10 +912,32 @@ if (!props.disableSeo) {
             {{ estadoGlobal.texto }}
           </div>
 
-          <h1 class="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            <Zap class="mr-2 inline h-7 w-7 text-blue-400" fill="currentColor" />
-            Estado de Carga en Aspe
-          </h1>
+          <div class="relative inline-block">
+            <h1
+              @click="toggleTooltip('titulo')"
+              class="text-2xl font-bold tracking-tight text-white sm:text-3xl cursor-help border-b border-dashed border-blue-500/30 pb-1 hover:border-blue-500/50 transition-colors select-none inline-block"
+            >
+              <Zap class="mr-2 inline h-7 w-7 text-blue-400" fill="currentColor" />
+              Estado de Carga en Aspe
+            </h1>
+            <!-- Tooltip del título -->
+            <div
+              v-if="tooltipActivo === 'titulo'"
+              class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[11px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+            >
+              <p class="font-semibold text-slate-200 mb-1">Estado en Tiempo Real</p>
+              <p>
+                Monitor de disponibilidad actual de todos los cargadores de coche eléctrico en Aspe. Los datos se actualizan cada pocos minutos para reflejar el estado real de los puntos de recarga.
+              </p>
+              <button
+                @click.stop="closeTooltip()"
+                class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+              >
+                ✕ Cerrar
+              </button>
+            </div>
+          </div>
+
           <p class="mt-1 flex items-center gap-1.5 text-sm text-slate-400">
             <MapPin class="h-3.5 w-3.5" />
             Iberdrola 22 kW · Ayuntamiento de Aspe, Alicante
@@ -940,18 +972,48 @@ if (!props.disableSeo) {
       <nav
         class="rounded-2xl border border-slate-800 bg-slate-900/60 p-2 backdrop-blur"
         aria-label="Secciones del dashboard"
+        @click.self="closeTooltip()"
       >
-        <div class="flex snap-x gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-4 md:overflow-visible md:pb-0">
+        <div class="flex snap-x gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-5 md:overflow-visible md:pb-0">
           <NuxtLink
             v-for="tab in DASHBOARD_TABS"
             :key="tab.id"
             :to="TAB_PATHS[tab.id]"
-            class="min-w-[150px] snap-start flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all md:min-w-0"
+            class="relative min-w-[150px] snap-start flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all md:min-w-0"
             :class="tabButtonClass(tab.id)"
             @click="onTabClick(tab.id)"
           >
             <component :is="tab.icon" class="h-4 w-4" />
             {{ tab.label }}
+            
+            <!-- Tooltip de sección -->
+            <div
+              v-if="tooltipActivo === `tab-${tab.id}`"
+              class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-1/2 md:-translate-x-1/2 md:translate-y-0 md:mt-2 w-[90vw] md:w-52 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+            >
+              <p class="font-semibold text-slate-200 mb-1">{{ tab.label }}</p>
+              <p v-if="tab.id === 'resumen'">
+                Vista general del estado actual de los cargadores con disponibilidad y ocupación en tiempo real.
+              </p>
+              <p v-else-if="tab.id === 'mapa'">
+                Mapa interactivo que muestra la ubicación exacta de cada punto de recarga en Aspe.
+              </p>
+              <p v-else-if="tab.id === 'inteligencia'">
+                Análisis predictivo y estadísticas: mejores horas para cargar, tendencias y predicciones.
+              </p>
+              <p v-else-if="tab.id === 'diagnostico'">
+                Diagnóstico completo de la red: saturación, incidencias, zonas críticas y recomendaciones.
+              </p>
+              <p v-else-if="tab.id === 'expansion'">
+                Análisis inteligente de ubicaciones recomendadas para nuevos puntos de recarga basado en demanda y parkings.
+              </p>
+              <button
+                @click.stop="closeTooltip()"
+                class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+              >
+                ✕ Cerrar
+              </button>
+            </div>
           </NuxtLink>
         </div>
       </nav>
@@ -1029,9 +1091,40 @@ if (!props.disableSeo) {
       <section
         class="rounded-2xl border border-slate-800 p-4 transition-all"
         :class="[activeTabTheme.panel, `ring-1 ${activeTabTheme.panelRing}`]"
+        @click.self="closeTooltip()"
       >
-        <div class="mb-3 flex flex-wrap items-center gap-2">
+        <div class="mb-3 flex flex-wrap items-center gap-3">
           <FilterButtons v-if="muestraFiltroPeriodo" v-model="periodo" />
+          <div v-if="muestraFiltroPeriodo" class="relative">
+            <button
+              @click="toggleTooltip('periodo')"
+              class="cursor-help text-slate-500 hover:text-slate-300 transition-colors"
+              title="Información sobre períodos"
+            >
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+            <!-- Tooltip períodos -->
+            <div
+              v-if="tooltipActivo === 'periodo'"
+              class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+            >
+              <p class="font-semibold text-slate-200 mb-1.5">Período de Análisis</p>
+              <ul class="space-y-1.5 text-[10px]">
+                <li><strong class="text-emerald-400">Hoy:</strong> Últimas 24 horas</li>
+                <li><strong class="text-blue-400">7d:</strong> Últimos 7 días</li>
+                <li><strong class="text-purple-400">30d:</strong> Últimos 30 días</li>
+                <li><strong class="text-orange-400">Todo:</strong> Historial completo</li>
+              </ul>
+              <button
+                @click.stop="closeTooltip()"
+                class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+              >
+                ✕ Cerrar
+              </button>
+            </div>
+          </div>
         </div>
         <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
           <span class="inline-flex items-center rounded-full px-2.5 py-1 ring-1" :class="activeTabTheme.badge">
@@ -1051,34 +1144,140 @@ if (!props.disableSeo) {
       <Transition name="tab-panel" mode="out-in">
         <div :key="activeTab">
           <!-- ════════ TAB: RESUMEN ════════ -->
-          <section v-if="activeTab === 'resumen'" aria-labelledby="tab-resumen" class="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5">
-            <h2 id="tab-resumen" class="text-xs font-semibold uppercase tracking-wider" :class="activeTabTheme.title">
-              Resumen operativo
-            </h2>
-
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <p class="text-xs text-slate-500">Conectores libres</p>
-                <p class="mt-1 text-3xl font-bold text-emerald-400">{{ conectoresLibres }}</p>
-                <p class="text-xs text-slate-600">de {{ conectoresTotales }} conectores</p>
-              </div>
-              <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <p class="text-xs text-slate-500">Puntos disponibles</p>
-                <p class="mt-1 text-3xl font-bold text-white">{{ libres }}</p>
-                <p class="text-xs text-slate-600">{{ cargadores.length }} puntos monitorizados</p>
-              </div>
-              <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <p class="text-xs text-slate-500">Puntos ocupados</p>
-                <p class="mt-1 text-3xl font-bold text-rose-400">{{ ocupados }}</p>
-                <p class="text-xs text-slate-600">estado instantáneo</p>
+          <section v-if="activeTab === 'resumen'" aria-labelledby="tab-resumen" class="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5" @click.self="closeTooltip()">
+            <div class="relative inline-block">
+              <h2
+                id="tab-resumen"
+                @click="toggleTooltip('resumen-titulo')"
+                class="text-xs font-semibold uppercase tracking-wider cursor-help border-b border-dashed border-emerald-500/30 pb-1 hover:border-emerald-500/50 transition-colors select-none"
+                :class="activeTabTheme.title"
+              >
+                Resumen operativo
+              </h2>
+              <!-- Tooltip del resumen -->
+              <div
+                v-if="tooltipActivo === 'resumen-titulo'"
+                class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[11px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+              >
+                <p class="font-semibold text-slate-200 mb-1">Resumen Operativo</p>
+                <p>
+                  Vista de las métricas principales de disponibilidad: conectores libres, puntos disponibles y ocupados en tiempo real.
+                </p>
+                <button
+                  @click.stop="closeTooltip()"
+                  class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                >
+                  ✕ Cerrar
+                </button>
               </div>
             </div>
 
-            <section aria-labelledby="probabilidad-llegada-home" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div class="relative rounded-2xl border border-slate-800 bg-slate-900/60 p-4 group">
+                <div class="flex items-start justify-between gap-2">
+                  <div class="flex-1">
+                    <p
+                      @click="toggleTooltip('conectores-libres')"
+                      class="text-xs text-slate-500 cursor-help border-b border-dashed border-emerald-400/30 hover:border-emerald-400/50 transition-colors select-none inline-block pb-0.5"
+                    >
+                      Conectores libres
+                    </p>
+                  </div>
+                </div>
+                <p class="mt-1 text-3xl font-bold text-emerald-400">{{ conectoresLibres }}</p>
+                <p class="text-xs text-slate-600">de {{ conectoresTotales }} conectores</p>
+                <!-- Tooltip conectores -->
+                <div
+                  v-if="tooltipActivo === 'conectores-libres'"
+                  class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-1/2 md:-translate-x-1/2 md:translate-y-0 md:mt-2 w-[90vw] md:w-48 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                >
+                  <p class="font-semibold text-slate-200 mb-1">Conectores Libres</p>
+                  <p>Cantidad total de conectores disponibles en todos los cargadores de la red.</p>
+                  <button
+                    @click.stop="closeTooltip()"
+                    class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                  >
+                    ✕ Cerrar
+                  </button>
+                </div>
+              </div>
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <p
+                  @click="toggleTooltip('puntos-disponibles')"
+                  class="text-xs text-slate-500 cursor-help border-b border-dashed border-blue-400/30 hover:border-blue-400/50 transition-colors select-none inline-block pb-0.5"
+                >
+                  Puntos disponibles
+                </p>
+                <p class="mt-1 text-3xl font-bold text-white">{{ libres }}</p>
+                <p class="text-xs text-slate-600">{{ cargadores.length }} puntos monitorizados</p>
+                <!-- Tooltip puntos disponibles -->
+                <div
+                  v-if="tooltipActivo === 'puntos-disponibles'"
+                  class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-1/2 md:-translate-x-1/2 md:translate-y-0 md:mt-2 w-[90vw] md:w-48 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                >
+                  <p class="font-semibold text-slate-200 mb-1">Puntos Disponibles</p>
+                  <p>Cantidad de cargadores que tienen al menos un conector libre.</p>
+                  <button
+                    @click.stop="closeTooltip()"
+                    class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                  >
+                    ✕ Cerrar
+                  </button>
+                </div>
+              </div>
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                <p
+                  @click="toggleTooltip('puntos-ocupados')"
+                  class="text-xs text-slate-500 cursor-help border-b border-dashed border-rose-400/30 hover:border-rose-400/50 transition-colors select-none inline-block pb-0.5"
+                >
+                  Puntos ocupados
+                </p>
+                <p class="mt-1 text-3xl font-bold text-rose-400">{{ ocupados }}</p>
+                <p class="text-xs text-slate-600">estado instantáneo</p>
+                <!-- Tooltip puntos ocupados -->
+                <div
+                  v-if="tooltipActivo === 'puntos-ocupados'"
+                  class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-1/2 md:-translate-x-1/2 md:translate-y-0 md:mt-2 w-[90vw] md:w-48 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                >
+                  <p class="font-semibold text-slate-200 mb-1">Puntos Ocupados</p>
+                  <p>Cantidad de cargadores completamente llenos sin conectores disponibles.</p>
+                  <button
+                    @click.stop="closeTooltip()"
+                    class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                  >
+                    ✕ Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <section aria-labelledby="probabilidad-llegada-home" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4" @click.self="closeTooltip()">
               <div class="mb-3 flex items-center justify-between gap-3">
-                <h3 id="probabilidad-llegada-home" class="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                  Probabilidad al llegar
-                </h3>
+                <div class="relative inline-block">
+                  <h3
+                    id="probabilidad-llegada-home"
+                    @click="toggleTooltip('eta-explicacion')"
+                    class="text-xs font-semibold uppercase tracking-wider text-slate-400 cursor-help border-b border-dashed border-cyan-400/30 hover:border-cyan-400/50 transition-colors select-none pb-0.5"
+                  >
+                    Probabilidad al llegar
+                  </h3>
+                  <!-- Tooltip ETA -->
+                  <div
+                    v-if="tooltipActivo === 'eta-explicacion'"
+                    class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[11px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                  >
+                    <p class="font-semibold text-slate-200 mb-1">Probabilidad al Llegar</p>
+                    <p>
+                      Probabilidad de encontrar un conector libre al llegar en el tiempo indicado, basada en patrones históricos de ocupación.
+                    </p>
+                    <button
+                      @click.stop="closeTooltip()"
+                      class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                    >
+                      ✕ Cerrar
+                    </button>
+                  </div>
+                </div>
                 <div class="flex flex-wrap gap-2">
                   <button
                     v-for="m in [5, 15, 30, 60]"
@@ -1196,93 +1395,252 @@ if (!props.disableSeo) {
                 </template>
               </ClientOnly>
               <div class="grid grid-cols-1 gap-2 border-t border-slate-800 p-3 sm:grid-cols-2 lg:grid-cols-3">
-                <a
+                <div
                   v-for="p in puntosMapa"
                   :key="`map-${p.stationId}`"
-                  :href="p.googleUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
                   class="rounded-lg border px-3 py-2 text-xs transition-colors"
                   :class="classesEstadoPunto(p.libres, p.total).card"
                 >
-                  <span class="block font-medium" :class="classesEstadoPunto(p.libres, p.total).detail">{{ p.stationId }} · {{ p.libres }}/{{ p.total }}</span>
-                  <span class="block truncate text-slate-500">{{ p.locationName }}</span>
-                </a>
+                  <span class="block font-medium" :class="classesEstadoPunto(p.libres, p.total).detail">{{ p.stationId }}</span>
+                  <NuxtLink :to="`/charger/${p.stationId}`" class="block truncate text-slate-300 hover:text-slate-100 hover:underline transition-colors font-medium mt-1">
+                    {{ p.locationName }}
+                    <span class="text-slate-500 text-[10px]">→</span>
+                  </NuxtLink>
+                  <span class="block text-slate-500 mt-1">{{ p.libres }}/{{ p.total }} libres</span>
+                  <div class="mt-2 flex gap-2">
+                    <a
+                      :href="p.googleUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="flex-1 rounded px-2 py-1 text-[10px] font-medium text-center text-slate-400 hover:text-white transition-colors border border-slate-700/50 hover:border-slate-600"
+                    >
+                      Maps
+                    </a>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
 
           <!-- ════════ TAB: INTELIGENCIA ════════ -->
-          <section v-else-if="activeTab === 'inteligencia'" aria-labelledby="tab-inteligencia" class="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5">
+          <section v-else-if="activeTab === 'inteligencia'" aria-labelledby="tab-inteligencia" class="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5" @click.self="closeTooltip()">
             <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <h2 id="tab-inteligencia" class="text-xs font-semibold uppercase tracking-wider" :class="activeTabTheme.title">
-                Inteligencia y analítica
-              </h2>
-              <label class="flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-slate-300">
-                Fecha pronóstico
-                <select
-                  v-model.number="diasPrediccion"
-                  class="rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200 outline-none"
+              <div class="relative inline-block">
+                <h2
+                  id="tab-inteligencia"
+                  @click="toggleTooltip('inteligencia-titulo')"
+                  class="text-xs font-semibold uppercase tracking-wider cursor-help border-b border-dashed border-purple-500/30 hover:border-purple-500/50 transition-colors select-none pb-0.5"
+                  :class="activeTabTheme.title"
                 >
-                  <option v-if="!opcionesPronosticoFecha.length" :value="diasPrediccion" disabled>
-                    Sin fechas disponibles
-                  </option>
-                  <option
-                    v-for="opcion in opcionesPronosticoFecha"
-                    :key="`pred-fecha-${opcion.fecha}`"
-                    :value="opcion.dias"
+                  Inteligencia y analítica
+                </h2>
+                <!-- Tooltip inteligencia -->
+                <div
+                  v-if="tooltipActivo === 'inteligencia-titulo'"
+                  class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[11px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                >
+                  <p class="font-semibold text-slate-200 mb-1">Inteligencia y Analítica</p>
+                  <p>
+                    Análisis histórico de patrones de ocupación, gráficos de calor y recomendaciones basadas en datos.
+                  </p>
+                  <button
+                    @click.stop="closeTooltip()"
+                    class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
                   >
-                    {{ etiquetaPronosticoFecha(opcion) }}
-                  </option>
-                </select>
-              </label>
+                    ✕ Cerrar
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div class="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div v-if="heatmapPending" class="h-72 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
-              <WeeklyHeatmap
-                v-else-if="heatmapData"
-                :datos="heatmapData.datos ?? []"
-              />
+            <div class="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-10">
+              <div class="xl:col-span-7 space-y-4">
+                <div v-if="heatmapPending" class="h-72 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+                <div v-else-if="heatmapData" class="space-y-2">
+                  <h3 class="text-sm font-semibold text-slate-300">Mapa de Calor Semanal · Ocupación por Hora</h3>
+                  <WeeklyHeatmap :datos="heatmapData.datos ?? []" />
+                </div>
 
-              <div v-if="prediccionPending" class="h-72 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
-              <PredictionWidget
-                v-else-if="prediccionData"
-                :mejor-hora="prediccionData.mejorHora"
-                :probabilidad="prediccionData.probabilidad"
-                :dia-semana="prediccionData.diaSemana"
-                :fecha-objetivo="prediccionData.fechaObjetivo"
-                :dias-hacia-futuro="prediccionData.diasHaciaFuturo"
-                :confianza="prediccionData.confianza"
-                :metodo-prediccion="prediccionData.metodoPrediccion"
-                :usa-fallback-global="prediccionData.usaFallbackGlobal"
-                :franjas="prediccionData.franjas"
-                :horas-recomendadas="prediccionData.horasRecomendadas"
-                :hay-suficientes-datos="prediccionData.haySuficientesDatos"
-                :dias-con-datos="prediccionData.diasConDatos"
-                :dias-historicos-con-datos="prediccionData.diasHistoricosConDatos"
-                :muestras-totales="prediccionData.muestrasTotales"
-                :dias-minimos-recomendados="prediccionData.diasMinimosRecomendados"
-                :dias-faltantes-estimados="prediccionData.diasFaltantesEstimados"
-                :ventana-historica-dias="prediccionData.ventanaHistoricaDias"
-              />
-            </div>
+                <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                  <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Ocupación por cargador</h3>
+                  <div v-if="metricasPending" class="mt-3 h-32 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
+                  <ul v-else-if="metricasData?.porEstacion?.length" class="mt-3 space-y-3">
+                    <li
+                      v-for="est in metricasData.porEstacion"
+                      :key="`intel-ocupacion-${est.station_id}`"
+                      class="flex flex-col gap-1"
+                    >
+                      <div class="flex items-center justify-between text-xs">
+                        <span class="truncate text-slate-300" :title="est.location_name">
+                          {{ est.location_name }}
+                        </span>
+                        <span class="ml-2 shrink-0 font-semibold" :class="claseColorOcupacion(est.tasaOcupacion)">
+                          {{ est.tasaOcupacion }}%
+                        </span>
+                      </div>
+                      <div class="h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
+                        <div
+                          class="h-full rounded-full transition-all duration-700"
+                          :class="claseBarraOcupacion(est.tasaOcupacion)"
+                          :style="{ width: anchoBarraOcupacion(est.tasaOcupacion) }"
+                        />
+                      </div>
+                      <p class="text-[10px] text-slate-600">
+                        {{ est.sesionesEstimadas }} sesiones · ~{{ est.minutosPorSesion }} min/sesión
+                      </p>
+                    </li>
+                  </ul>
+                  <p v-else class="mt-3 text-xs text-slate-500">Sin datos de ocupación por cargador.</p>
+                </section>
+              </div>
 
-            <div v-if="metricasPending" class="h-40 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
-            <UsageStats
-              v-else-if="metricasData"
-              :tasa-ocupacion-media="metricasData.tasaOcupacionMedia"
-              :sesiones-estimadas="metricasData.sesionesEstimadas"
-              :minutos-ocupados-medio="metricasData.minutosOcupadosMedio"
-              :cargador-mas-usado="metricasData.cargadorMasUsado"
-              :por-estacion="metricasData.porEstacion ?? []"
-            />
+              <div class="xl:col-span-3 space-y-4">
+                <div v-if="metricasPending" class="space-y-3">
+                  <div class="h-20 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+                  <div class="h-20 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+                </div>
+                <div v-else-if="metricasData" class="space-y-3">
+                  <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                    <div class="relative inline-block">
+                      <p
+                        @click="toggleTooltip('intel-ocupacion-media')"
+                        class="text-xs text-slate-400 cursor-help border-b border-dashed border-slate-600/50 hover:border-slate-500 transition-colors pb-0.5"
+                      >
+                        Ocupación media
+                      </p>
+                      <div
+                        v-if="tooltipActivo === 'intel-ocupacion-media'"
+                        class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                      >
+                        <p class="font-semibold text-slate-200 mb-1">Ocupación media</p>
+                        <p>Porcentaje de tiempo en que los conectores han estado ocupados durante el periodo seleccionado.</p>
+                        <button
+                          @click.stop="closeTooltip()"
+                          class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                        >
+                          ✕ Cerrar
+                        </button>
+                      </div>
+                    </div>
+                    <p class="mt-1 text-3xl font-bold" :class="claseColorOcupacion(metricasData.tasaOcupacionMedia)">
+                      {{ metricasData.tasaOcupacionMedia }}%
+                    </p>
+                    <p class="text-[11px] text-slate-500">del tiempo ocupados</p>
+                  </div>
 
-            <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Duración media de ocupación</h3>
+                  <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                    <div class="relative inline-block">
+                      <p
+                        @click="toggleTooltip('intel-sesiones-estimadas')"
+                        class="text-xs text-slate-400 cursor-help border-b border-dashed border-slate-600/50 hover:border-slate-500 transition-colors pb-0.5"
+                      >
+                        Sesiones estimadas
+                      </p>
+                      <div
+                        v-if="tooltipActivo === 'intel-sesiones-estimadas'"
+                        class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                      >
+                        <p class="font-semibold text-slate-200 mb-1">Sesiones estimadas</p>
+                        <p>Número aproximado de sesiones de carga detectadas a partir de los cambios de disponibilidad.</p>
+                        <button
+                          @click.stop="closeTooltip()"
+                          class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                        >
+                          ✕ Cerrar
+                        </button>
+                      </div>
+                    </div>
+                    <p class="mt-1 text-3xl font-bold text-white">{{ metricasData.sesionesEstimadas }}</p>
+                    <p class="text-[11px] text-slate-500">cargas estimadas</p>
+                  </div>
+
+                  <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                    <div class="relative inline-block">
+                      <p
+                        @click="toggleTooltip('intel-minutos-medio')"
+                        class="text-xs text-slate-400 cursor-help border-b border-dashed border-slate-600/50 hover:border-slate-500 transition-colors pb-0.5"
+                      >
+                        Minutos ocupados medio
+                      </p>
+                      <div
+                        v-if="tooltipActivo === 'intel-minutos-medio'"
+                        class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                      >
+                        <p class="font-semibold text-slate-200 mb-1">Minutos ocupados medio</p>
+                        <p>Duración promedio de una sesión de ocupación del conector, expresada en minutos.</p>
+                        <button
+                          @click.stop="closeTooltip()"
+                          class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                        >
+                          ✕ Cerrar
+                        </button>
+                      </div>
+                    </div>
+                    <p class="mt-1 text-3xl font-bold text-white">{{ metricasData.minutosOcupadosMedio }}<span class="text-lg font-normal text-slate-400"> min</span></p>
+                    <p class="text-[11px] text-slate-500">por sesión de carga</p>
+                  </div>
+
+                  <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                    <div class="relative inline-block">
+                      <p
+                        @click="toggleTooltip('intel-cargador-mas-usado')"
+                        class="text-xs text-slate-400 cursor-help border-b border-dashed border-slate-600/50 hover:border-slate-500 transition-colors pb-0.5"
+                      >
+                        Cargador más usado
+                      </p>
+                      <div
+                        v-if="tooltipActivo === 'intel-cargador-mas-usado'"
+                        class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                      >
+                        <p class="font-semibold text-slate-200 mb-1">Cargador más usado</p>
+                        <p>Estación con mayor número de sesiones estimadas en el periodo seleccionado.</p>
+                        <button
+                          @click.stop="closeTooltip()"
+                          class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                        >
+                          ✕ Cerrar
+                        </button>
+                      </div>
+                    </div>
+                    <p v-if="metricasData.cargadorMasUsado" class="mt-1 text-sm font-semibold leading-snug text-white">
+                      {{ metricasData.cargadorMasUsado.location_name }}
+                    </p>
+                    <p v-else class="mt-1 text-sm text-slate-500">Sin datos</p>
+                    <p v-if="metricasData.cargadorMasUsado" class="text-[11px] text-slate-500">
+                      {{ metricasData.cargadorMasUsado.sesionesEstimadas }} sesiones
+                    </p>
+                  </div>
+                </div>
+
+                <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4" @click.self="closeTooltip()">
+                <div class="relative inline-block">
+                  <h3
+                    @click="toggleTooltip('duracion-ocupacion')"
+                    class="text-xs font-semibold uppercase tracking-wider text-slate-400 cursor-help border-b border-dashed border-slate-600/50 hover:border-slate-600 transition-colors select-none pb-0.5"
+                  >
+                    Duración media de ocupación
+                  </h3>
+                  <!-- Tooltip duración -->
+                  <div
+                    v-if="tooltipActivo === 'duracion-ocupacion'"
+                    class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-52 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                  >
+                    <p class="font-semibold text-slate-200 mb-1">Duración de Ocupación</p>
+                    <ul class="space-y-1">
+                      <li><strong class="text-emerald-400">Media:</strong> Promedio de minutos que dura una ocupación</li>
+                      <li><strong class="text-blue-400">Mediana:</strong> Valor central (50% arriba, 50% abajo)</li>
+                      <li><strong class="text-purple-400">P90:</strong> 90% de ocupaciones duran menos que esto</li>
+                    </ul>
+                    <button
+                      @click.stop="closeTooltip()"
+                      class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                    >
+                      ✕ Cerrar
+                    </button>
+                  </div>
+                </div>
                 <div v-if="duracionOcupacionPending" class="mt-3 h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
-                <div v-else class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div v-else class="mt-3 grid grid-cols-1 gap-3">
                   <div class="rounded-xl border border-slate-800 bg-slate-950/70 p-3">
                     <p class="text-xs text-slate-500">Media</p>
                     <p class="text-2xl font-bold text-white">{{ duracionOcupacionData?.duracionMediaMin ?? 0 }} min</p>
@@ -1296,17 +1654,47 @@ if (!props.disableSeo) {
                     <p class="text-2xl font-bold text-white">{{ duracionOcupacionData?.p90Min ?? 0 }} min</p>
                   </div>
                 </div>
-              </section>
+                </section>
+              </div>
             </div>
 
             <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Salud y fiabilidad</h3>
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 lg:col-span-2" @click.self="closeTooltip()">
+                <div class="relative inline-block">
+                  <h3
+                    @click="toggleTooltip('salud-fiabilidad')"
+                    class="text-xs font-semibold uppercase tracking-wider text-slate-400 cursor-help border-b border-dashed border-slate-600/50 hover:border-slate-600 transition-colors select-none pb-0.5"
+                  >
+                    Salud y fiabilidad
+                  </h3>
+                  <!-- Tooltip salud -->
+                  <div
+                    v-if="tooltipActivo === 'salud-fiabilidad'"
+                    class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                  >
+                    <p class="font-semibold text-slate-200 mb-1">Salud y Fiabilidad</p>
+                    <p class="mb-1.5">Índice de confiabilidad de cada cargador incluyendo:</p>
+                    <ul class="space-y-1">
+                      <li><strong class="text-emerald-400">Uptime:</strong> % tiempo operativo</li>
+                      <li><strong class="text-amber-400">Offline:</strong> Horas fuera de servicio</li>
+                      <li><strong class="text-rose-400">Desconexiones:</strong> Fallos detectados</li>
+                    </ul>
+                    <button
+                      @click.stop="closeTooltip()"
+                      class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                    >
+                      ✕ Cerrar
+                    </button>
+                  </div>
+                </div>
                 <div v-if="saludCargadoresPending" class="mt-3 h-32 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
                 <div v-else class="mt-3 space-y-2">
                   <div v-for="item in saludTop" :key="`health-${item.stationId}`" class="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs">
                     <div class="flex items-center justify-between gap-2">
-                      <p class="font-semibold text-slate-200">{{ item.locationName }}</p>
+                      <NuxtLink :to="`/charger/${item.stationId}`" class="flex items-center gap-1 font-semibold text-slate-200 hover:text-slate-100 hover:underline transition-colors">
+                        {{ item.locationName }}
+                        <span class="text-slate-500 text-[10px]">→</span>
+                      </NuxtLink>
                       <span
                         class="rounded-full px-2 py-0.5 font-semibold uppercase"
                         :class="item.fiabilidad === 'green' ? 'bg-emerald-500/20 text-emerald-300' : (item.fiabilidad === 'yellow' ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300')"
@@ -1319,12 +1707,39 @@ if (!props.disableSeo) {
                 </div>
               </section>
 
-              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Ranking red</h3>
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4" @click.self="closeTooltip()">
+                <div class="relative inline-block">
+                  <h3
+                    @click="toggleTooltip('ranking-red')"
+                    class="text-xs font-semibold uppercase tracking-wider text-slate-400 cursor-help border-b border-dashed border-slate-600/50 hover:border-slate-600 transition-colors select-none pb-0.5"
+                  >
+                    Ranking red
+                  </h3>
+                  <!-- Tooltip ranking -->
+                  <div
+                    v-if="tooltipActivo === 'ranking-red'"
+                    class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-52 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                  >
+                    <p class="font-semibold text-slate-200 mb-1">Ranking de Red</p>
+                    <p>Clasificación de cargadores por disponibilidad y confiabilidad. Los cargadores mejor posicionados tienen más disponibilidad y menos incidencias.</p>
+                    <button
+                      @click.stop="closeTooltip()"
+                      class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                    >
+                      ✕ Cerrar
+                    </button>
+                  </div>
+                </div>
                 <div v-if="rankingsPending" class="mt-3 h-32 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
                 <ol v-else class="mt-3 space-y-2 text-xs">
                   <li v-for="item in rankingTop" :key="`ranking-${item.stationId}`" class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-slate-300">
-                    <p class="font-semibold text-white">#{{ item.position }} {{ item.icon }} {{ item.stationName }}</p>
+                    <p class="font-semibold text-white">
+                      #{{ item.position }} {{ item.icon }}
+                      <NuxtLink :to="`/charger/${item.stationId}`" class="hover:text-slate-100 hover:underline transition-colors">
+                        {{ item.stationName }}
+                        <span class="text-slate-500 text-[10px]">→</span>
+                      </NuxtLink>
+                    </p>
                     <p class="text-slate-500">Score {{ item.value }} · Disp. {{ item.details?.disponibilidadPct ?? 0 }}%</p>
                   </li>
                 </ol>
@@ -1332,8 +1747,29 @@ if (!props.disableSeo) {
             </div>
 
             <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Insights automáticos</h3>
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4" @click.self="closeTooltip()">
+                <div class="relative inline-block">
+                  <h3
+                    @click="toggleTooltip('insights-automaticos')"
+                    class="text-xs font-semibold uppercase tracking-wider text-slate-400 cursor-help border-b border-dashed border-slate-600/50 hover:border-slate-600 transition-colors select-none pb-0.5"
+                  >
+                    Insights automáticos
+                  </h3>
+                  <!-- Tooltip insights -->
+                  <div
+                    v-if="tooltipActivo === 'insights-automaticos'"
+                    class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                  >
+                    <p class="font-semibold text-slate-200 mb-1">Insights Automáticos</p>
+                    <p>Recomendaciones generadas automáticamente basadas en patrones de datos históricos y tendencias actuales.</p>
+                    <button
+                      @click.stop="closeTooltip()"
+                      class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                    >
+                      ✕ Cerrar
+                    </button>
+                  </div>
+                </div>
                 <div v-if="recomendacionesPending" class="mt-3 h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
                 <ul v-else class="mt-3 space-y-2 text-xs text-slate-300">
                   <li v-for="(rec, i) in recomendacionesTop" :key="`rec-${i}`" class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2">
@@ -1342,13 +1778,43 @@ if (!props.disableSeo) {
                 </ul>
               </section>
 
-              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Anomalías detectadas</h3>
+              <section class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4" @click.self="closeTooltip()">
+                <div class="relative inline-block">
+                  <h3
+                    @click="toggleTooltip('anomalias-detectadas')"
+                    class="text-xs font-semibold uppercase tracking-wider text-slate-400 cursor-help border-b border-dashed border-slate-600/50 hover:border-slate-600 transition-colors select-none pb-0.5"
+                  >
+                    Anomalías detectadas
+                  </h3>
+                  <!-- Tooltip anomalías -->
+                  <div
+                    v-if="tooltipActivo === 'anomalias-detectadas'"
+                    class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[10px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+                  >
+                    <p class="font-semibold text-slate-200 mb-1">Anomalías Detectadas</p>
+                    <p class="mb-1.5">Patrones inusuales y problemas identificados automáticamente.</p>
+                    <ul class="space-y-1 text-[9px]">
+                      <li><strong class="text-rose-400">High:</strong> Requiere atención inmediata</li>
+                      <li><strong class="text-amber-400">Medium:</strong> Vigilancia recomendada</li>
+                      <li><strong class="text-slate-400">Low:</strong> Información para referencia</li>
+                    </ul>
+                    <button
+                      @click.stop="closeTooltip()"
+                      class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                    >
+                      ✕ Cerrar
+                    </button>
+                  </div>
+                </div>
                 <div v-if="anomaliasPending" class="mt-3 h-24 animate-pulse rounded-xl border border-slate-800 bg-slate-900" />
                 <ul v-else class="mt-3 space-y-2 text-xs text-slate-300">
                   <li v-for="(a, i) in anomaliasTop" :key="`anom-${i}`" class="rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2">
                     <p class="font-semibold" :class="a.severity === 'high' ? 'text-rose-300' : (a.severity === 'medium' ? 'text-amber-300' : 'text-slate-300')">
-                      {{ a.stationName }} · {{ a.type }}
+                      <NuxtLink :to="`/charger/${a.stationId}`" class="hover:underline transition-colors">
+                        {{ a.stationName }}
+                        <span class="text-slate-500 text-[10px]">→</span>
+                      </NuxtLink>
+                      · {{ a.type }}
                     </p>
                     <p class="text-slate-400">{{ a.description }}</p>
                   </li>
@@ -1360,19 +1826,255 @@ if (!props.disableSeo) {
           </section>
 
           <!-- ════════ TAB: DIAGNÓSTICO ════════ -->
-          <section v-else aria-labelledby="tab-diagnostico" class="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5">
-            <h2 id="tab-diagnostico" class="mb-4 text-xs font-semibold uppercase tracking-wider" :class="activeTabTheme.title">
-              Diagnóstico avanzado
-            </h2>
+          <section v-else-if="activeTab === 'diagnostico'" aria-labelledby="tab-diagnostico" class="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5" @click.self="closeTooltip()">
+            <div class="relative inline-block mb-4">
+              <h2
+                id="tab-diagnostico"
+                @click="toggleTooltip('diagnostico-titulo')"
+                class="text-xs font-semibold uppercase tracking-wider cursor-help border-b border-dashed border-rose-500/30 hover:border-rose-500/50 transition-colors select-none pb-0.5"
+                :class="activeTabTheme.title"
+              >
+                Diagnóstico avanzado
+              </h2>
+              <!-- Tooltip diagnóstico -->
+              <div
+                v-if="tooltipActivo === 'diagnostico-titulo'"
+                class="fixed md:absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 md:top-full md:left-0 md:translate-x-0 md:translate-y-0 md:mt-2 w-[90vw] md:w-56 rounded-lg bg-slate-950 p-3 text-[11px] text-slate-300 shadow-xl ring-1 ring-slate-700 z-50"
+              >
+                <p class="font-semibold text-slate-200 mb-1">Diagnóstico Avanzado</p>
+                <p>
+                  Análisis completo de incidencias, zonas saturadas y recomendaciones para expansión de infraestructura. Identifica dónde instalar nuevos cargadores.
+                </p>
+                <button
+                  @click.stop="closeTooltip()"
+                  class="mt-2 text-[10px] text-slate-400 hover:text-slate-200 transition-colors md:hidden"
+                >
+                  ✕ Cerrar
+                </button>
+              </div>
+            </div>
 
             <div v-if="diagnosticoPending || etaPending" class="h-56 animate-pulse rounded-2xl border border-slate-800 bg-slate-900" />
+            
+            <!-- Insights automáticos y Mapa de demanda en 2 columnas -->
+            <div v-if="diagnosticoData" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <!-- Insights automáticos + Resumen de salud -->
+              <div class="space-y-4">
+                <!-- Saturación y recomendación -->
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                  <div class="mb-3 flex items-center gap-2">
+                    <span class="text-blue-400">⚡</span>
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Red municipal</h3>
+                  </div>
+                  <div class="space-y-2">
+                    <div>
+                      <p class="text-xs text-slate-500">Saturación actual</p>
+                      <p class="text-xl font-bold" :class="diagnosticoData.saturacion.porcentaje >= 25 ? 'text-rose-400' : diagnosticoData.saturacion.porcentaje >= 15 ? 'text-amber-400' : 'text-emerald-400'">
+                        {{ diagnosticoData.saturacion.porcentaje }}%
+                      </p>
+                    </div>
+                    <div class="border-t border-slate-700 pt-2">
+                      <p class="text-xs text-slate-500">Recomendación técnica</p>
+                      <p class="text-sm font-semibold text-slate-100">+{{ diagnosticoData.saturacion.conectoresExtraRecomendados }} conectores</p>
+                      <p class="text-xs text-slate-400">{{ diagnosticoData.saturacion.puntosExtraRecomendados }} puntos de recarga</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Salud de telemetría -->
+                <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                  <div class="mb-3 flex items-center gap-2">
+                    <span class="text-cyan-400">🔧</span>
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Salud de telemetría</h3>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="rounded-lg border border-rose-500/30 bg-rose-500/10 p-2">
+                      <p class="text-xs text-rose-300">Estaciones críticas</p>
+                      <p class="text-lg font-bold text-rose-400">{{ diagnosticoData.averias.filter((a: any) => a.nivel === 'critical').length }}</p>
+                      <p class="text-[10px] text-rose-400/70">de {{ diagnosticoData.averias.length }}</p>
+                    </div>
+                    <div class="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+                      <p class="text-xs text-amber-300">Alertas warning</p>
+                      <p class="text-lg font-bold text-amber-400">{{ diagnosticoData.averias.filter((a: any) => a.nivel === 'warning').length }}</p>
+                      <p class="text-[10px] text-amber-400/70">incidencias</p>
+                    </div>
+                    <div class="rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-2">
+                      <p class="text-xs text-cyan-300">Datos desactualizados</p>
+                      <p class="text-lg font-bold text-cyan-300">{{ diagnosticoData.averias.filter((a: any) => (a.horasSinActualizarDinamico ?? 0) >= 6).length }}</p>
+                      <p class="text-[10px] text-cyan-300/70">&gt;= 6h</p>
+                    </div>
+                    <div class="rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 p-2">
+                      <p class="text-xs text-fuchsia-300">Patrones planos</p>
+                      <p class="text-lg font-bold text-fuchsia-300">{{ diagnosticoData.averias.filter((a: any) => a.razones.some((r: string) => r.toLowerCase().includes('patron plano'))).length }}</p>
+                      <p class="text-[10px] text-fuchsia-300/70">sin variación</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Insights automáticos -->
+                <div v-if="diagnosticoData.insights?.length" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+                  <div class="mb-3 flex items-center gap-2">
+                    <span class="text-fuchsia-400">✨</span>
+                    <h3 class="text-sm font-semibold uppercase tracking-wider text-slate-400">Insights IA</h3>
+                  </div>
+                  <ul class="space-y-1.5 text-xs text-slate-300">
+                    <li v-for="(i, idx) in diagnosticoData.insights" :key="idx" class="flex gap-2">
+                      <span class="flex-shrink-0 text-slate-500">→</span>
+                      <span>{{ i }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- Mapa de demanda por zonas -->
+              <DiagnosticDemandHeatmap
+                :zonas="diagnosticoData.zonasPrioritarias ?? []"
+              />
+            </div>
+
+            <!-- Zonas prioritarias y Posibles averías -->
             <AiDiagnostics
-              v-else-if="diagnosticoData"
+              v-if="diagnosticoData"
               :saturacion="diagnosticoData.saturacion"
               :averias="diagnosticoData.averias ?? []"
               :insights="diagnosticoData.insights ?? []"
               :zonas-prioritarias="diagnosticoData.zonasPrioritarias ?? []"
+              :show-insights="false"
+              :show-zones-and-beyond="true"
             />
+          </section>
+
+          <!-- ════════ TAB: EXPANSIÓN ════════ -->
+          <section v-else-if="activeTab === 'expansion'" aria-labelledby="tab-expansion" class="rounded-2xl border border-slate-800 bg-slate-900/30 p-4 md:p-5" @click.self="closeTooltip()">
+            <div class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+              <!-- Navbar -->
+              <nav class="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/80 backdrop-blur-md">
+                <div :style="{ maxWidth: `${maxWidth}px` }" class="mx-auto flex items-center justify-between px-4 py-3 sm:px-6">
+                  <div class="flex items-center gap-2">
+                    <div class="rounded-lg bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 p-2">
+                      <Navigation class="h-5 w-5 text-cyan-400" />
+                    </div>
+                    <div>
+                      <h1 class="text-lg font-bold text-slate-100">Expansión Inteligente</h1>
+                      <p class="text-[11px] text-slate-500">Ubicaciones recomendadas por demanda</p>
+                    </div>
+                  </div>
+                </div>
+              </nav>
+
+              <!-- Main Content -->
+              <div :style="{ maxWidth: `${maxWidth}px` }" class="mx-auto space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+                <!-- Info Banner -->
+                <div class="space-y-2 rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 p-6">
+                  <div class="flex items-start gap-3">
+                    <TrendingUp class="h-5 w-5 flex-shrink-0 text-cyan-400" />
+                    <div class="space-y-1">
+                      <h2 class="font-semibold text-slate-100">Análisis de Expansión Basado en Datos</h2>
+                      <p class="text-sm text-slate-400">
+                        Este mapa muestra ubicaciones óptimas para nuevos puntos de carga, identificadas mediante análisis de:
+                        demanda histórica, zonas saturadas, cobertura geográfica y proximidad a parkings públicos y privados.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Metodología -->
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                    <div class="mb-2 rounded-lg bg-slate-800/50 p-2 w-fit">
+                      <Zap class="h-4 w-4 text-amber-400" />
+                    </div>
+                    <h3 class="text-sm font-semibold text-slate-200">Demanda Real</h3>
+                    <p class="mt-1 text-xs text-slate-400">Basada en ocupación histórica de últimos 30 días</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                    <div class="mb-2 rounded-lg bg-slate-800/50 p-2 w-fit">
+                      <Navigation class="h-4 w-4 text-cyan-400" />
+                    </div>
+                    <h3 class="text-sm font-semibold text-slate-200">Cobertura</h3>
+                    <p class="mt-1 text-xs text-slate-400">Optimización de distancia entre puntos</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                    <div class="mb-2 rounded-lg bg-slate-800/50 p-2 w-fit">
+                      <AlertTriangle class="h-4 w-4 text-rose-400" />
+                    </div>
+                    <h3 class="text-sm font-semibold text-slate-200">Prioridades</h3>
+                    <p class="mt-1 text-xs text-slate-400">Refuerzo en zonas críticas identificadas</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+                    <div class="mb-2 rounded-lg bg-slate-800/50 p-2 w-fit">
+                      <MapPin class="h-4 w-4 text-emerald-400" />
+                    </div>
+                    <h3 class="text-sm font-semibold text-slate-200">Infraestructura</h3>
+                    <p class="mt-1 text-xs text-slate-400">Proximidad a parkings y vías principales</p>
+                  </div>
+                </div>
+
+                <!-- ExpansionMap Component -->
+                <ExpansionMap />
+
+                <!-- Recomendaciones Adicionales -->
+                <div class="space-y-4">
+                  <h2 class="text-lg font-bold text-slate-100">Consideraciones de Implementación</h2>
+
+                  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+                      <h3 class="mb-3 flex items-center gap-2 font-semibold text-slate-200">
+                        <TrendingUp class="h-4 w-4 text-cyan-400" />
+                        Fases de Implementación
+                      </h3>
+                      <ul class="space-y-2 text-sm text-slate-400">
+                        <li class="flex items-start gap-2">
+                          <span class="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-cyan-400 flex-shrink-0" />
+                          <span><strong>Fase 1:</strong> Instalar 2-3 puntos en zonas críticas (demanda > 70%)</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                          <span class="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                          <span><strong>Fase 2:</strong> Expandir a zonas de demanda alta (55-70%) dentro de 3-6 meses</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                          <span class="mt-1 inline-block h-1.5 w-1.5 rounded-full bg-slate-400 flex-shrink-0" />
+                          <span><strong>Fase 3:</strong> Revisar datos trimestralmente y ajustar ubicaciones</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    <div class="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
+                      <h3 class="mb-3 flex items-center gap-2 font-semibold text-slate-200">
+                        <AlertTriangle class="h-4 w-4 text-amber-400" />
+                        Criterios de Viabilidad
+                      </h3>
+                      <ul class="space-y-2 text-sm text-slate-400">
+                        <li class="flex items-start gap-2">
+                          <span class="text-emerald-400">✓</span>
+                          <span>Acceso a red eléctrica (< 50m de línea de distribución)</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                          <span class="text-emerald-400">✓</span>
+                          <span>Zona de estacionamiento público o privado disponible</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                          <span class="text-emerald-400">✓</span>
+                          <span>Tránsito peatonal moderado a alto</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                          <span class="text-rose-400">✗</span>
+                          <span>Evitar duplicación excesiva (mínimo 200m de distancia)</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Footer Info -->
+                <div class="rounded-xl border border-slate-800/50 bg-slate-900/30 p-4 text-center text-xs text-slate-500">
+                  <p>
+                    Este análisis se basa en datos históricos de {{ new Date().toLocaleDateString('es-ES', { year: 'numeric', month: 'long' }) }}.
+                    Los resultados son recomendaciones de ubicación óptima y deben validarse con reconocimiento in situ.
+                  </p>
+                </div>
+              </div>
+            </div>
           </section>
         </div>
       </Transition>

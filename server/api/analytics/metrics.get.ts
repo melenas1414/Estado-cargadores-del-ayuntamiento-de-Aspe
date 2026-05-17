@@ -16,10 +16,46 @@ const DIAS_POR_PERIODO: Record<string, number | null> = {
   all: null,
 };
 
+type LogRow = {
+  station_id: string;
+  location_name: string;
+  is_available: boolean;
+  created_at: string;
+};
+
 function parseStationId(raw: unknown): string | null {
   const stationId = String(raw ?? '').trim();
   if (!stationId || stationId === 'all') return null;
   return stationId;
+}
+
+// Función auxiliar para paginar y traer todos los datos
+async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 1000): Promise<LogRow[]> {
+  let allRows: LogRow[] = [];
+  let offset = 0;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const { data, error } = await baseQuery.range(offset, offset + pageSize - 1);
+    
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Error al obtener datos: ${error.message}`,
+      });
+    }
+    
+    const rows = (data ?? []) as LogRow[];
+    allRows = allRows.concat(rows);
+    
+    if (rows.length < pageSize) {
+      hasMore = false;
+    } else {
+      offset += pageSize;
+    }
+  }
+  
+  return allRows;
 }
 
 export default defineEventHandler(async (event) => {
@@ -35,30 +71,25 @@ export default defineEventHandler(async (event) => {
     ? null
     : new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
 
-  // ─── Obtener todos los registros del período ────────────────────────────
-  let queryLogs = supabase
-    .from('charging_logs')
-    .select('station_id, location_name, is_available, created_at')
-    .order('created_at', { ascending: true });
+  // ─── Obtener todos los registros del período (con paginación) ─────────
+  const buildQuery = () => {
+    let q = supabase
+      .from('charging_logs')
+      .select('station_id, location_name, is_available, created_at')
+      .order('created_at', { ascending: true });
 
-  if (desde) {
-    queryLogs = queryLogs.gte('created_at', desde.toISOString());
-  }
+    if (desde) {
+      q = q.gte('created_at', desde.toISOString());
+    }
 
-  if (stationId) {
-    queryLogs = queryLogs.eq('station_id', stationId);
-  }
+    if (stationId) {
+      q = q.eq('station_id', stationId);
+    }
 
-  const { data, error } = await queryLogs;
+    return q;
+  };
 
-  if (error) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Error al calcular métricas: ${error.message}`,
-    });
-  }
-
-  const registros = data ?? [];
+  const registros = await fetchAllRows(supabase, buildQuery());
 
   if (!registros.length) {
     return {

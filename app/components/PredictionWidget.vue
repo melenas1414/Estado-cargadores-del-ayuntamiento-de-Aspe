@@ -3,8 +3,11 @@
  * PredictionWidget.vue
  * Muestra la predicción del mejor momento para cargar hoy,
  * basada en el análisis histórico de los últimos 30 días.
+ * 
+ * NOTA: Las horas vienen del servidor en UTC. Se convierten a zona horaria local del navegador.
  */
 import { BrainCircuit, TrendingUp, Clock, CalendarCheck } from 'lucide-vue-next';
+import { computed, ref, onMounted } from 'vue';
 
 interface Franja {
   hora:           number;
@@ -33,9 +36,27 @@ const props = defineProps<{
   ventanaHistoricaDias?: number;
 }>();
 
-function formatHora(h: number): string {
-  return `${String(h).padStart(2, '0')}:00`;
+// Offset de zona horaria: diferencia entre hora local y UTC
+// Usar ref + onMounted para evitar SSR mismatch
+const timezoneOffset = ref(0);
+
+onMounted(() => {
+  const now = new Date();
+  timezoneOffset.value = now.getHours() - now.getUTCHours();
+});
+
+// Convertir hora UTC a hora local
+function convertToLocalHour(utcHour: number): number {
+  const local = (utcHour + timezoneOffset.value) % 24;
+  return local < 0 ? local + 24 : local;
 }
+
+function formatHora(h: number): string {
+  const localHour = convertToLocalHour(h);
+  return `${String(localHour).padStart(2, '0')}:00`;
+}
+
+// Nota: Las conversiones a hora local se hacen en el template para evitar SSR mismatch
 
 // Color de la barra según disponibilidad (0-100 %)
 function colorBarra(pct: number): string {
@@ -161,10 +182,10 @@ const esPrediccionEspeculativa = computed(() => {
             />
             <!-- Etiqueta de hora cada 6 horas -->
             <div
-              v-if="f.hora % 6 === 0"
+              v-if="convertToLocalHour(f.hora) % 6 === 0"
               class="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[8px] text-slate-600"
             >
-              {{ f.hora }}h
+              {{ String(convertToLocalHour(f.hora)).padStart(2, '0') }}h
             </div>
           </div>
         </div>

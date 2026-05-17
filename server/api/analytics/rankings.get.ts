@@ -30,6 +30,35 @@ function disponibilidad(row: Row): number {
   return total > 0 ? Math.max(0, Math.min(total, free)) / total : 0;
 }
 
+// Función auxiliar para paginar y traer todos los datos
+async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 1000): Promise<Row[]> {
+  let allRows: Row[] = [];
+  let offset = 0;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const { data, error } = await baseQuery.range(offset, offset + pageSize - 1);
+    
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Error al obtener datos: ${error.message}`,
+      });
+    }
+    
+    const rows = (data ?? []) as Row[];
+    allRows = allRows.concat(rows);
+    
+    if (rows.length < pageSize) {
+      hasMore = false;
+    } else {
+      offset += pageSize;
+    }
+  }
+  
+  return allRows;
+}
+
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const dias = parsePeriodo(query.period);
@@ -45,12 +74,7 @@ export default defineEventHandler(async (event) => {
     queryLogs = queryLogs.gte('created_at', since);
   }
 
-  const { data, error } = await queryLogs;
-  if (error) {
-    throw createError({ statusCode: 500, statusMessage: `Error en rankings: ${error.message}` });
-  }
-
-  const rows = (data ?? []) as Row[];
+  const rows = await fetchAllRows(supabase, queryLogs);
   if (!rows.length) return { rankings: [] };
 
   const byStation = new Map<string, {

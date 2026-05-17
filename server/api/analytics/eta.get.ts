@@ -82,8 +82,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const target = new Date(Date.now() + minutes * 60 * 1000);
-  const day = target.getDay();
-  const hour = target.getHours();
+  const day = target.getUTCDay();
+  const hour = target.getUTCHours();
 
   const snapshots: Record<string, { day: number; hour: number; free: number; total: number }> = {};
   const byStationSnapshot: Record<string, Record<string, { free: number; total: number; name: string }>> = {};
@@ -93,7 +93,7 @@ export default defineEventHandler(async (event) => {
     const key = r.created_at;
 
     if (!snapshots[key]) {
-      snapshots[key] = { day: d.getDay(), hour: d.getHours(), free: 0, total: 0 };
+      snapshots[key] = { day: d.getUTCDay(), hour: d.getUTCHours(), free: 0, total: 0 };
     }
 
     const free = typeof r.available_connectors === 'number' ? Math.max(0, r.available_connectors) : (r.is_available ? 1 : 0);

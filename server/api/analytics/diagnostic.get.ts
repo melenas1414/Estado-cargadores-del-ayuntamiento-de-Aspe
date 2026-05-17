@@ -57,6 +57,35 @@ function parseStationId(raw: unknown): string | null {
   return stationId;
 }
 
+// Función auxiliar para paginar y traer todos los datos
+async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 1000): Promise<Row[]> {
+  let allRows: Row[] = [];
+  let offset = 0;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const { data, error } = await baseQuery.range(offset, offset + pageSize - 1);
+    
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Error al obtener datos: ${error.message}`,
+      });
+    }
+    
+    const rows = (data ?? []) as Row[];
+    allRows = allRows.concat(rows);
+    
+    if (rows.length < pageSize) {
+      hasMore = false;
+    } else {
+      offset += pageSize;
+    }
+  }
+  
+  return allRows;
+}
+
 function inferZona(locationName: string): string {
   const base = String(locationName || '')
     .split(',')[0]
@@ -99,16 +128,7 @@ export default defineEventHandler(async (event) => {
     queryLogs = queryLogs.eq('station_id', stationId);
   }
 
-  const { data, error } = await queryLogs;
-
-  if (error) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Error en diagnostico: ${error.message}`,
-    });
-  }
-
-  const rows = (data ?? []) as Row[];
+  const rows = await fetchAllRows(supabase, queryLogs);
   if (!rows.length) {
     return {
       saturacion: {

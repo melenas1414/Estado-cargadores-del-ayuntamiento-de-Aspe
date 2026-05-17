@@ -51,6 +51,35 @@ function inferSampleMinutes(rows: LogRow[]): number {
   return deltas.length ? median(deltas) : 15;
 }
 
+// Función auxiliar para paginar y traer todos los datos
+async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 1000): Promise<LogRow[]> {
+  let allRows: LogRow[] = [];
+  let offset = 0;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const { data, error } = await baseQuery.range(offset, offset + pageSize - 1);
+    
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Error al obtener datos: ${error.message}`,
+      });
+    }
+    
+    const rows = (data ?? []) as LogRow[];
+    allRows = allRows.concat(rows);
+    
+    if (rows.length < pageSize) {
+      hasMore = false;
+    } else {
+      offset += pageSize;
+    }
+  }
+  
+  return allRows;
+}
+
 function isOccupied(row: { is_available: boolean; available_connectors: number | null; total_connectors: number | null }): boolean {
   if (typeof row.available_connectors === 'number' && typeof row.total_connectors === 'number' && row.total_connectors > 0) {
     return row.available_connectors <= 0;
@@ -132,21 +161,20 @@ export default defineEventHandler(async (event) => {
   }
 
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const { data: historyRows, error: historyError } = await supabase
-    .from('charging_logs')
-    .select('created_at, is_available, available_connectors, total_connectors')
-    .eq('station_id', target.station_id)
-    .gte('created_at', since)
-    .order('created_at', { ascending: true });
+  
+  // Construir query con paginación
+  const buildHistoryQuery = () => {
+    let q = supabase
+      .from('charging_logs')
+      .select('created_at, is_available, available_connectors, total_connectors')
+      .eq('station_id', target.station_id)
+      .gte('created_at', since)
+      .order('created_at', { ascending: true });
+    
+    return q;
+  };
 
-  if (historyError) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Error al calcular ETA de liberacion: ${historyError.message}`,
-    });
-  }
-
-  const rows = (historyRows ?? []) as LogRow[];
+  const rows = await fetchAllRows(supabase, buildHistoryQuery());
   if (!rows.length) {
     return {
       station_id: target.station_id,
