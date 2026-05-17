@@ -673,7 +673,7 @@ const seoActual = computed(() => TAB_SEO[tabActual.value]);
 const canonicalPath = computed(() => TAB_PATHS[tabActual.value]);
 const canonicalUrl = computed(() => `${siteUrl}${canonicalPath.value}`);
 const rootUrl = `${siteUrl}/`;
-const socialImageUrl = `${siteUrl}/dashboard.png`;
+const socialImageUrl = `${siteUrl}/map.png`;
 
 // ─── SEO estructurado ────────────────────────────────────────────────────────
 // Datos de estaciones para JSON-LD (LocalBusiness por punto de carga)
