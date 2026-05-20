@@ -5,6 +5,7 @@
 // Optional:
 // - SCRAPER_MODE: incremental | full
 // - IBERDROLA_LANGUAGE: es | en
+// - SCRAPER_STATION_IDS: CSV con station_id objetivo
 // - IBERDROLA_BBOX_LAT_MAX, IBERDROLA_BBOX_LAT_MIN, IBERDROLA_BBOX_LON_MAX, IBERDROLA_BBOX_LON_MIN
 // - IBERDROLA_DAILY_BBOX_LAT_MAX, IBERDROLA_DAILY_BBOX_LAT_MIN, IBERDROLA_DAILY_BBOX_LON_MAX, IBERDROLA_DAILY_BBOX_LON_MIN
 
@@ -14,6 +15,18 @@ const SUPABASE_URL = inputConfig.supabaseUrl || $env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = inputConfig.supabaseServiceRoleKey || $env.SUPABASE_SERVICE_ROLE_KEY;
 const SCRAPER_MODE = String(inputConfig.scraperMode || $env.SCRAPER_MODE || 'incremental').toLowerCase();
 const IBERDROLA_LANGUAGE = String(inputConfig.iberdrolaLanguage || $env.IBERDROLA_LANGUAGE || 'es');
+
+function parseCsvList(value) {
+  if (!value) return [];
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+const SCRAPER_STATION_IDS = new Set(
+  parseCsvList(inputConfig.scraperStationIds || $env.SCRAPER_STATION_IDS),
+);
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error('Faltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY en n8n');
@@ -53,17 +66,31 @@ const KNOWN_STATIONS = [
     location_name: 'Calle Orihuela 100, Aspe',
     address_tokens: ['orihuela', '100', 'aspe'],
   },
+  {
+    station_id: 'IBERDROLA-5629',
+    cp_id: '5629',
+    location_name: 'Plaza del Progreso 1, Monforte del Cid',
+    address_tokens: ['progreso', 'monforte'],
+  },
 ];
 
-const KNOWN_STATION_IDS = new Set(KNOWN_STATIONS.map((station) => station.station_id));
+const ACTIVE_STATIONS =
+  SCRAPER_STATION_IDS.size > 0
+    ? KNOWN_STATIONS.filter((station) => SCRAPER_STATION_IDS.has(station.station_id))
+    : KNOWN_STATIONS;
+
+const KNOWN_STATION_IDS = new Set(ACTIVE_STATIONS.map((station) => station.station_id));
 const KNOWN_STATIONS_BY_CUPR = new Map(
-  KNOWN_STATIONS.filter((station) => station.cupr_id).map((station) => [station.cupr_id, station]),
+  ACTIVE_STATIONS.filter((station) => station.cupr_id).map((station) => [station.cupr_id, station]),
+);
+const KNOWN_STATIONS_BY_CP = new Map(
+  ACTIVE_STATIONS.filter((station) => station.cp_id).map((station) => [station.cp_id, station]),
 );
 
 const BBOX_INCREMENTAL = {
-  latitudeMax: Number(inputConfig.incrementalLatMax ?? $env.IBERDROLA_BBOX_LAT_MAX ?? '38.365'),
+  latitudeMax: Number(inputConfig.incrementalLatMax ?? $env.IBERDROLA_BBOX_LAT_MAX ?? '38.41'),
   latitudeMin: Number(inputConfig.incrementalLatMin ?? $env.IBERDROLA_BBOX_LAT_MIN ?? '38.325'),
-  longitudeMax: Number(inputConfig.incrementalLonMax ?? $env.IBERDROLA_BBOX_LON_MAX ?? '-0.735'),
+  longitudeMax: Number(inputConfig.incrementalLonMax ?? $env.IBERDROLA_BBOX_LON_MAX ?? '-0.72'),
   longitudeMin: Number(inputConfig.incrementalLonMin ?? $env.IBERDROLA_BBOX_LON_MIN ?? '-0.805'),
 };
 
@@ -169,8 +196,14 @@ function resolveKnownStationFromItem(item, addressText) {
     if (knownByCupr) return knownByCupr;
   }
 
+  const cpId = extractCpId(item);
+  if (cpId) {
+    const knownByCp = KNOWN_STATIONS_BY_CP.get(String(cpId));
+    if (knownByCp) return knownByCp;
+  }
+
   const tokens = new Set(addressTokens(addressText));
-  return KNOWN_STATIONS.find((station) =>
+  return ACTIVE_STATIONS.find((station) =>
     station.address_tokens.every((term) => tokens.has(term)),
   );
 }
@@ -259,7 +292,7 @@ async function fetchStationsList(bbox) {
     language: IBERDROLA_LANGUAGE,
   };
 
-  const data = await iberdrolaPost('getListarPuntosRecarga', payload);
+  const data = await iberdrolaPost.call(this, 'getListarPuntosRecarga', payload);
   return Array.isArray(data?.entidad) ? data.entidad : [];
 }
 
@@ -275,7 +308,7 @@ async function fetchStationDetail(cuprId) {
     language: IBERDROLA_LANGUAGE,
   };
 
-  const data = await iberdrolaPost('getDatosPuntoRecarga', payload);
+  const data = await iberdrolaPost.call(this, 'getDatosPuntoRecarga', payload);
   return Array.isArray(data?.entidad) && data.entidad.length ? data.entidad[0] : null;
 }
 
@@ -344,7 +377,6 @@ function extractLatestProviderTimestamp(listItem, detailItem, logicalSockets) {
     .sort()
     .at(-1);
 
-  // Fallback operativo: evita dejar vacio el campo cuando Iberdrola omite updateDate.
   return latest || new Date().toISOString();
 }
 
@@ -457,11 +489,17 @@ async function insertRows(rows) {
 const bbox = SCRAPER_MODE === 'full' ? BBOX_DAILY_FULL : BBOX_INCREMENTAL;
 const list = await fetchStationsList.call(this, bbox);
 
+const unknownIds = Array.from(SCRAPER_STATION_IDS).filter(
+  (id) => !KNOWN_STATIONS.some((station) => station.station_id === id),
+);
+
 if (!list.length) {
   throw buildFailure('Iberdrola no devolvio estaciones. Posible bloqueo, cambio de API o respuesta vacia.', {
     stage: 'getListarPuntosRecarga',
     bbox,
     mode: SCRAPER_MODE,
+    targetStationIds: Array.from(KNOWN_STATION_IDS),
+    unknownConfiguredIds: unknownIds,
   });
 }
 
@@ -547,6 +585,8 @@ if (!knownCandidates) {
     stage: 'match_known_stations',
     detected: list.length,
     mode: SCRAPER_MODE,
+    targetStationIds: Array.from(KNOWN_STATION_IDS),
+    unknownConfiguredIds: unknownIds,
   });
 }
 
@@ -561,6 +601,8 @@ if (!dedupedRows.length) {
     detected: list.length,
     knownCandidates,
     validRows: detailRows.length,
+    targetStationIds: Array.from(KNOWN_STATION_IDS),
+    unknownConfiguredIds: unknownIds,
     stationFailures,
   });
 }
@@ -576,6 +618,8 @@ return [
       knownCandidates,
       validRows: detailRows.length,
       inserted: dedupedRows.length,
+      targetStationIds: Array.from(KNOWN_STATION_IDS),
+      unknownConfiguredIds: unknownIds,
       stationFailures,
       timestamp: new Date().toISOString(),
     },

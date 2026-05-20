@@ -1133,6 +1133,11 @@ if (!props.disableSeo) {
         </div>
       </section>
 
+      <div class="rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-[11px] text-cyan-100/90">
+        Actualización: hemos añadido el cargador de Monforte del Cid. Aunque no pertenece a Aspe,
+        puede ayudar a vecinos cercanos a encontrar una alternativa de recarga.
+      </div>
+
       <!-- ════════ ERROR ════════ -->
       <div
         v-if="cargadoresError"

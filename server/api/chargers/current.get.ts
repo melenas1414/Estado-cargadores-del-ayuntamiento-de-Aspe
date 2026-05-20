@@ -5,11 +5,23 @@
 import { serverSupabaseClient } from '#supabase/server';
 
 export default defineEventHandler(async (event) => {
+  const runtimeConfig = useRuntimeConfig(event);
   const supabase = await serverSupabaseClient(event);
 
-  const { data, error } = await supabase
+  const visibleStationIds = String(runtimeConfig.chargersVisibleStationIds || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  let query = supabase
     .from('charger_current_status')
-    .select('*')
+    .select('*');
+
+  if (visibleStationIds.length > 0) {
+    query = query.in('station_id', visibleStationIds);
+  }
+
+  const { data, error } = await query
     .order('location_name', { ascending: true });
 
   if (error) {

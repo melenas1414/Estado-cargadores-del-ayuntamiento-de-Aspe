@@ -39,6 +39,7 @@ export default defineNuxtConfig({
     supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY ?? '',
     iberdrolaApiUrl:    process.env.IBERDROLA_API_URL ?? '',
     iberdrolaApiKey:    process.env.IBERDROLA_API_KEY ?? '',
+    chargersVisibleStationIds: process.env.CHARGERS_VISIBLE_STATION_IDS ?? '',
     // Disponibles en cliente y servidor (prefijo "public")
     public: {
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL ?? '',

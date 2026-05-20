@@ -192,6 +192,7 @@ npm run preview
 | SUPABASE_SERVICE_KEY | Si | Servidor | service_role para endpoints server-side |
 | IBERDROLA_API_URL | No | Servidor | Reserva para integracion privada |
 | IBERDROLA_API_KEY | No | Servidor | Reserva para integracion privada |
+| CHARGERS_VISIBLE_STATION_IDS | No | Servidor | Lista CSV de station_id visibles en la API de estado actual |
 
 ### Variables del scraper
 
@@ -203,6 +204,7 @@ npm run preview
 | IBERDROLA_LANGUAGE | No | Idioma, por defecto es |
 | SCRAPER_PROXY_URL | No | Proxy HTTP/HTTPS |
 | SCRAPER_DEBUG_RESPONSES | No | Logging extendido (1/true) |
+| SCRAPER_STATION_IDS | No | Lista CSV de station_id objetivo a ingerir |
 | IBERDROLA_BBOX_LAT_MAX | No | Bounding box incremental |
 | IBERDROLA_BBOX_LAT_MIN | No | Bounding box incremental |
 | IBERDROLA_BBOX_LON_MAX | No | Bounding box incremental |
@@ -232,6 +234,7 @@ Secrets requeridos:
 | SUPABASE_URL | Si |
 | SUPABASE_SERVICE_ROLE_KEY | Si |
 | SCRAPER_PROXY_URL | No |
+| SCRAPER_STATION_IDS | No |
 
 ### Deploy
 
@@ -256,6 +259,18 @@ Configura en Vercel (Production y Preview cuando aplique):
 - SUPABASE_SERVICE_KEY
 - IBERDROLA_API_URL (si se usa)
 - IBERDROLA_API_KEY (si se usa)
+- CHARGERS_VISIBLE_STATION_IDS (si quieres limitar/combinar estaciones por ciudad)
+
+### Configuracion por ciudad o dominio
+
+Puedes reutilizar la misma base de datos para distintos dominios (por ejemplo, uno por ciudad) y decidir por entorno que cargadores entran y cuales se muestran.
+
+Ejemplo para incluir Aspe + Monforte (ID 5629):
+
+```bash
+CHARGERS_VISIBLE_STATION_IDS=ESIBE22E0001001,ESIBE22E0001002,ESIBE22E0001003,ESIBE22E0001004,ESIBE22E0001005,IBERDROLA-5629
+SCRAPER_STATION_IDS=ESIBE22E0001001,ESIBE22E0001002,ESIBE22E0001003,ESIBE22E0001004,ESIBE22E0001005,IBERDROLA-5629
+```
 
 ## 9) Cookies y Google Analytics
 

@@ -66,6 +66,7 @@ jobs:
         env:
           SCRAPER_MODE: incremental
           SCRAPER_DEBUG_RESPONSES: '1'
+          SCRAPER_STATION_IDS: ${{ secrets.SCRAPER_STATION_IDS }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           IBERDROLA_LANGUAGE: es
@@ -117,6 +118,7 @@ jobs:
         env:
           SCRAPER_MODE: full
           SCRAPER_DEBUG_RESPONSES: '1'
+          SCRAPER_STATION_IDS: ${{ secrets.SCRAPER_STATION_IDS }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           IBERDROLA_LANGUAGE: es

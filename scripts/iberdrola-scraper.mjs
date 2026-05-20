@@ -9,6 +9,16 @@ const SCRAPER_DEBUG_RESPONSES = /^(1|true|yes|on)$/i.test(
   process.env.SCRAPER_DEBUG_RESPONSES || '',
 )
 
+function parseCsvList(value) {
+  if (!value) return []
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+const SCRAPER_STATION_IDS = new Set(parseCsvList(process.env.SCRAPER_STATION_IDS))
+
 if (SCRAPER_PROXY_URL) {
   // Node fetch puede usar proxy por variables de entorno cuando está habilitado.
   process.env.HTTP_PROXY = SCRAPER_PROXY_URL
@@ -55,17 +65,31 @@ const KNOWN_STATIONS = [
     location_name: 'Calle Orihuela 100, Aspe',
     address_tokens: ['orihuela', '100', 'aspe'],
   },
+  {
+    station_id: 'IBERDROLA-5629',
+    cp_id: '5629',
+    location_name: 'Plaza del Progreso 1, Monforte del Cid',
+    address_tokens: ['progreso', 'monforte'],
+  },
 ]
 
-const KNOWN_STATION_IDS = new Set(KNOWN_STATIONS.map((station) => station.station_id))
+const ACTIVE_STATIONS =
+  SCRAPER_STATION_IDS.size > 0
+    ? KNOWN_STATIONS.filter((station) => SCRAPER_STATION_IDS.has(station.station_id))
+    : KNOWN_STATIONS
+
+const KNOWN_STATION_IDS = new Set(ACTIVE_STATIONS.map((station) => station.station_id))
 const KNOWN_STATIONS_BY_CUPR = new Map(
-  KNOWN_STATIONS.filter((station) => station.cupr_id).map((station) => [station.cupr_id, station]),
+  ACTIVE_STATIONS.filter((station) => station.cupr_id).map((station) => [station.cupr_id, station]),
+)
+const KNOWN_STATIONS_BY_CP = new Map(
+  ACTIVE_STATIONS.filter((station) => station.cp_id).map((station) => [station.cp_id, station]),
 )
 
 const BBOX_INCREMENTAL = {
-  latitudeMax: Number(process.env.IBERDROLA_BBOX_LAT_MAX ?? '38.365'),
+  latitudeMax: Number(process.env.IBERDROLA_BBOX_LAT_MAX ?? '38.41'),
   latitudeMin: Number(process.env.IBERDROLA_BBOX_LAT_MIN ?? '38.325'),
-  longitudeMax: Number(process.env.IBERDROLA_BBOX_LON_MAX ?? '-0.735'),
+  longitudeMax: Number(process.env.IBERDROLA_BBOX_LON_MAX ?? '-0.72'),
   longitudeMin: Number(process.env.IBERDROLA_BBOX_LON_MIN ?? '-0.805'),
 }
 
@@ -203,8 +227,14 @@ function resolveKnownStationFromItem(item, addressText) {
     if (knownByCupr) return knownByCupr
   }
 
+  const cpId = extractCpId(item)
+  if (cpId) {
+    const knownByCp = KNOWN_STATIONS_BY_CP.get(String(cpId))
+    if (knownByCp) return knownByCp
+  }
+
   const tokens = new Set(addressTokens(addressText))
-  return KNOWN_STATIONS.find((station) =>
+  return ACTIVE_STATIONS.find((station) =>
     station.address_tokens.every((term) => tokens.has(term)),
   )
 }
@@ -419,8 +449,18 @@ async function insertRows(rows) {
 async function main() {
   const bbox = SCRAPER_MODE === 'full' ? BBOX_DAILY_FULL : BBOX_INCREMENTAL
 
+  if (SCRAPER_STATION_IDS.size > 0) {
+    const unknownIds = Array.from(SCRAPER_STATION_IDS).filter(
+      (id) => !KNOWN_STATIONS.some((station) => station.station_id === id),
+    )
+    if (unknownIds.length) {
+      console.warn(`[warn] SCRAPER_STATION_IDS contiene IDs no configurados: ${unknownIds.join(', ')}`)
+    }
+  }
+
   console.log(`Modo scraper: ${SCRAPER_MODE}`)
   console.log(`Proxy activo: ${SCRAPER_PROXY_URL ? 'si' : 'no'}`)
+  console.log(`Estaciones objetivo: ${ACTIVE_STATIONS.map((station) => station.station_id).join(', ')}`)
   console.log('BBOX:', bbox)
 
   const list = await fetchStationsList(bbox)
