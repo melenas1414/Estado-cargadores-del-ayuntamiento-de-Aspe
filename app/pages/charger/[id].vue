@@ -13,6 +13,12 @@ const tooltipActivo = ref<string | null>(null);
 const route = useRoute();
 const stationId = computed(() => String(route.params.id ?? '').trim());
 
+const STATION_ID_ALIASES: Record<string, string> = {
+  'IBERDROLA-5629': 'ESIBE22E0005629',
+};
+
+const normalizedRouteStationId = computed(() => STATION_ID_ALIASES[stationId.value] ?? stationId.value);
+
 // Coordenadas de los cargadores
 const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
   'ESIBE22E0001001': { lat: 38.341118679046346, lon: -0.7654778230267333 },
@@ -20,6 +26,8 @@ const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
   'ESIBE22E0001003': { lat: 38.3498799, lon: -0.7649660 },
   'ESIBE22E0001004': { lat: 38.3430059, lon: -0.7610202 },
   'ESIBE22E0001005': { lat: 38.3385331, lon: -0.7766776 },
+  'ESIBE22E0005629': { lat: 38.386527, lon: -0.726411 },
+  'IBERDROLA-5629': { lat: 38.386527, lon: -0.726411 },
 };
 
 // Información de las estaciones (dirección y nombre)
@@ -29,6 +37,8 @@ const STATION_INFO: Record<string, { name: string; street: string }> = {
   'ESIBE22E0001003': { name: 'Cargador Eléctrico Aspe · Av. Padre Ismael', street: 'Avenida Padre Ismael, 34' },
   'ESIBE22E0001004': { name: 'Cargador Eléctrico Aspe · Av. Juan Carlos I', street: 'Avenida Juan Carlos I, 36' },
   'ESIBE22E0001005': { name: 'Cargador Eléctrico Aspe · Calle Orihuela', street: 'Calle Orihuela, 100' },
+  'ESIBE22E0005629': { name: 'Cargador Eléctrico Monforte del Cid · C. Agost', street: 'Calle Agost, 5, Monforte del Cid' },
+  'IBERDROLA-5629': { name: 'Cargador Eléctrico Monforte del Cid · C. Agost', street: 'Calle Agost, 5, Monforte del Cid' },
 };
 
 const mapContainer = ref<HTMLElement | null>(null);
@@ -45,7 +55,7 @@ async function getLeaflet() {
   return leafletModule;
 }
 
-const stationCoords = computed(() => STATION_COORDS[stationId.value] ?? null);
+const stationCoords = computed(() => STATION_COORDS[normalizedRouteStationId.value] ?? STATION_COORDS[stationId.value] ?? null);
 
 async function initMap() {
   if (!mapContainer.value || !stationCoords.value) return;
@@ -87,7 +97,7 @@ async function initMap() {
 }
 
 // Watch for station changes and reinitialize map
-watch(() => stationId.value, () => {
+watch(() => normalizedRouteStationId.value, () => {
   if (mapContainer.value) {
     initMap();
   }
@@ -147,26 +157,39 @@ const { data: currentChargerData, pending: currentChargerPending } = useFetch('/
 
 const chargerStatus = computed(() => {
   if (!currentChargerData.value || !currentChargerData.value.cargadores) return null;
-  return currentChargerData.value.cargadores.find((c: any) => c.station_id === stationId.value);
+  return currentChargerData.value.cargadores.find((c: any) => {
+    const id = c?.station_id;
+    return id === stationId.value || id === normalizedRouteStationId.value;
+  });
 });
 
-const stationInfo = computed(() => STATION_INFO[stationId.value] ?? null);
+const stationIdForAnalytics = computed(() => chargerStatus.value?.station_id ?? normalizedRouteStationId.value);
+
+const stationInfo = computed(() => {
+  const fromMap = STATION_INFO[normalizedRouteStationId.value] ?? STATION_INFO[stationId.value] ?? null;
+  if (fromMap) return fromMap;
+  const fallbackName = chargerStatus.value?.location_name || `Cargador ${stationId.value}`;
+  return {
+    name: fallbackName,
+    street: 'Direccion no disponible',
+  };
+});
 
 const { data: healthData, pending: healthPending } = useFetch('/api/analytics/charger-health', {
   query: computed(() => ({
     periodo: periodo.value,
-    station_id: stationId.value,
+    station_id: stationIdForAnalytics.value,
   })),
-  watch: [stationId, periodo],
+  watch: [stationIdForAnalytics, periodo],
   lazy: true,
 });
 
 const { data: occHourData, pending: occHourPending } = useFetch('/api/analytics/occupancy-by-hour', {
   query: computed(() => ({
     periodo: periodo.value,
-    station_id: stationId.value,
+    station_id: stationIdForAnalytics.value,
   })),
-  watch: [stationId, periodo],
+  watch: [stationIdForAnalytics, periodo],
   lazy: true,
 });
 
@@ -178,54 +201,54 @@ const currentHourOccupancy = computed(() => {
 const { data: occDayData, pending: occDayPending } = useFetch('/api/analytics/occupancy-by-day', {
   query: computed(() => ({
     periodo: periodo.value,
-    station_id: stationId.value,
+    station_id: stationIdForAnalytics.value,
   })),
-  watch: [stationId, periodo],
+  watch: [stationIdForAnalytics, periodo],
   lazy: true,
 });
 
 const { data: durationData, pending: durationPending } = useFetch('/api/analytics/occupation-duration', {
   query: computed(() => ({
     dias_historico: periodo.value === 'today' ? 7 : (periodo.value === '7d' ? 30 : (periodo.value === '30d' ? 90 : 180)),
-    station_id: stationId.value,
+    station_id: stationIdForAnalytics.value,
   })),
-  watch: [stationId, periodo],
+  watch: [stationIdForAnalytics, periodo],
   lazy: true,
 });
 
 const { data: releaseData, pending: releasePending } = useFetch('/api/analytics/estimated-release', {
   query: computed(() => ({
     dias_historico: periodo.value === 'today' ? 7 : (periodo.value === '7d' ? 30 : (periodo.value === '30d' ? 90 : 180)),
-    station_id: stationId.value,
+    station_id: stationIdForAnalytics.value,
   })),
-  watch: [stationId, periodo],
+  watch: [stationIdForAnalytics, periodo],
   lazy: true,
 });
 
 const { data: heatmapData, pending: heatmapPending } = useFetch('/api/analytics/heatmap', {
   query: computed(() => ({
     periodo: periodo.value,
-    station_id: stationId.value,
+    station_id: stationIdForAnalytics.value,
   })),
-  watch: [stationId, periodo],
+  watch: [stationIdForAnalytics, periodo],
   lazy: true,
 });
 
 const { data: recommendationsData, pending: recommendationsPending } = useFetch('/api/analytics/recommendations', {
   query: computed(() => ({
-    station_id: stationId.value,
+    station_id: stationIdForAnalytics.value,
     periodo: periodo.value,
   })),
-  watch: [stationId, periodo],
+  watch: [stationIdForAnalytics, periodo],
   lazy: true,
 });
 
 const { data: anomaliesData, pending: anomaliesPending } = useFetch('/api/analytics/anomalies', {
   query: computed(() => ({
     period: periodo.value,
-    station_id: stationId.value,
+    station_id: stationIdForAnalytics.value,
   })),
-  watch: [stationId, periodo],
+  watch: [stationIdForAnalytics, periodo],
   lazy: true,
 });
 
@@ -238,9 +261,9 @@ const { data: etaData, pending: etaPending } = useFetch('/api/analytics/eta', {
   query: computed(() => ({
     minutes: etaMinutes.value,
     periodo: 'all',
-    station_id: stationId.value,
+    station_id: stationIdForAnalytics.value,
   })),
-  watch: [etaMinutes, stationId],
+  watch: [etaMinutes, stationIdForAnalytics],
   lazy: true,
 });
 
