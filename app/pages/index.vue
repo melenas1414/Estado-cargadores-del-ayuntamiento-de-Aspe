@@ -157,7 +157,8 @@ const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
   ESIBE22E0001003: { lat: 38.3498799, lon: -0.7649660 },
   ESIBE22E0001004: { lat: 38.3430059, lon: -0.7610202 },
   ESIBE22E0001005: { lat: 38.3385331, lon: -0.7766776 },
-  'IBERDROLA-5629': { lat: 38.3876, lon: -0.7286 },
+  'IBERDROLA-5629': { lat: 38.3810859, lon: -0.7308562 },
+  ESIBE22E0005629: { lat: 38.3810859, lon: -0.7308562 },
 };
 
 const STATION_MAP_LINKS: Record<string, string> = {
@@ -170,7 +171,8 @@ const STATION_STREETS: Record<string, string> = {
   ESIBE22E0001003: 'Avenida Padre Ismael, 34',
   ESIBE22E0001004: 'Avenida Juan Carlos I, 36',
   ESIBE22E0001005: 'Calle Orihuela, 100',
-  'IBERDROLA-5629': 'Plaza del Progreso, 8, Monforte del Cid',
+  'IBERDROLA-5629': 'Calle Agost, 5, Monforte del Cid',
+  ESIBE22E0005629: 'Calle Agost, 5, Monforte del Cid',
 };
 
 // ─── Estado de período seleccionado ─────────────────────────────────────────

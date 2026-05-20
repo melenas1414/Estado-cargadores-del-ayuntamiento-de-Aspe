@@ -26,8 +26,8 @@ const STATION_COORDS: Record<string, { lat: number; lon: number }> = {
   'ESIBE22E0001003': { lat: 38.3498799, lon: -0.7649660 },
   'ESIBE22E0001004': { lat: 38.3430059, lon: -0.7610202 },
   'ESIBE22E0001005': { lat: 38.3385331, lon: -0.7766776 },
-  'ESIBE22E0005629': { lat: 38.386527, lon: -0.726411 },
-  'IBERDROLA-5629': { lat: 38.386527, lon: -0.726411 },
+  'ESIBE22E0005629': { lat: 38.3810859, lon: -0.7308562 },
+  'IBERDROLA-5629': { lat: 38.3810859, lon: -0.7308562 },
 };
 
 // Información de las estaciones (dirección y nombre)
