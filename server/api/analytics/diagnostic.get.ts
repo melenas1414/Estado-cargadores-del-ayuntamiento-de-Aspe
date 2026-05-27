@@ -103,6 +103,12 @@ function inferZona(locationName: string): string {
 }
 
 export default defineEventHandler(async (event) => {
+  export default defineCachedEventHandler(async (event) => {
+  }, {
+    name: 'analytics-diagnostic',
+    maxAge: 3600,
+    swr: true,
+  });
   const query = getQuery(event);
   const periodo = String(query.periodo ?? '7d');
   const dias = Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)

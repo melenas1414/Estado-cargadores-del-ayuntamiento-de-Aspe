@@ -386,6 +386,8 @@ let intervaloRefresco: ReturnType<typeof setInterval> | null = null;
 let refrescoEnCurso = false;
 
 async function pollingInteligente() {
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+
   if (refrescoEnCurso) return;
   refrescoEnCurso = true;
 
@@ -417,7 +419,7 @@ onMounted(() => {
 
   intervaloRefresco = setInterval(() => {
     pollingInteligente();
-  }, 60_000);
+  }, 300_000);
 });
 
 onBeforeUnmount(() => {

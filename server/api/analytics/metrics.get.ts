@@ -59,6 +59,12 @@ async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 10
 }
 
 export default defineEventHandler(async (event) => {
+  export default defineCachedEventHandler(async (event) => {
+  }, {
+    name: 'analytics-metrics',
+    maxAge: 3600,
+    swr: true,
+  });
   const query   = getQuery(event);
   const periodo = String(query.periodo ?? '7d');
   const dias = Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)

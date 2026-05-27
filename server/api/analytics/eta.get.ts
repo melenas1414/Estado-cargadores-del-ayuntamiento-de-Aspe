@@ -38,6 +38,12 @@ function parsePeriodo(raw: unknown): number | null {
 }
 
 export default defineEventHandler(async (event) => {
+  export default defineCachedEventHandler(async (event) => {
+  }, {
+    name: 'analytics-eta',
+    maxAge: 3600,
+    swr: true,
+  });
   const query = getQuery(event);
   const minutes = parseMinutes(query.minutes);
   const dias = parsePeriodo(query.periodo);

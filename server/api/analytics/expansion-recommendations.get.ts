@@ -233,6 +233,12 @@ function distanciaMinimaARecomendacionesExistentes(
 }
 
 export default defineEventHandler(async (event) => {
+  export default defineCachedEventHandler(async (event) => {
+  }, {
+    name: 'analytics-expansion-recommendations',
+    maxAge: 3600,
+    swr: true,
+  });
   const query = getQuery(event);
   const periodo = String(query.periodo ?? '30d');
 

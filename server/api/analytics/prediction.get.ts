@@ -120,6 +120,12 @@ async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 10
 }
 
 export default defineEventHandler(async (event) => {
+  export default defineCachedEventHandler(async (event) => {
+  }, {
+    name: 'analytics-prediction',
+    maxAge: 3600,
+    swr: true,
+  });
   const supabase = await serverSupabaseClient(event);
   const query = getQuery(event);
   const diasHaciaFuturo = parseDiasHaciaFuturo(query.dias);

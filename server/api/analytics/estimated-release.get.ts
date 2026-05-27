@@ -94,6 +94,12 @@ function confidenceFromSamples(n: number): NivelConfianza {
 }
 
 export default defineEventHandler(async (event) => {
+  export default defineCachedEventHandler(async (event) => {
+  }, {
+    name: 'analytics-estimated-release',
+    maxAge: 3600,
+    swr: true,
+  });
   const query = getQuery(event);
   const requestedStationId = parseStationId(query.station_id);
   const days = parseDays(query.dias_historico);

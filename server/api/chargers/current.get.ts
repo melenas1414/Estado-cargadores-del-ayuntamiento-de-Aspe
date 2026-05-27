@@ -3,8 +3,9 @@
  * Devuelve el estado más reciente de cada una de las 5 estaciones.
  */
 import { serverSupabaseClient } from '#supabase/server';
+import { defineCachedEventHandler } from 'nitropack/runtime';
 
-export default defineEventHandler(async (event) => {
+export default defineCachedEventHandler(async (event) => {
   const runtimeConfig = useRuntimeConfig(event);
   const supabase = await serverSupabaseClient(event);
 
@@ -60,4 +61,8 @@ export default defineEventHandler(async (event) => {
     ultimaActualizacion,
     ultimoEstadoProveedor: ultimoEstadoProveedorSafe,
   };
+}, {
+  name: 'chargers-current',
+  maxAge: 15,
+  swr: true,
 });

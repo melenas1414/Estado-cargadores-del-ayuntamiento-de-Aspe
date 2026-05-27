@@ -78,6 +78,12 @@ async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 10
 }
 
 export default defineEventHandler(async (event) => {
+  export default defineCachedEventHandler(async (event) => {
+  }, {
+    name: 'analytics-occupancy-by-day',
+    maxAge: 3600,
+    swr: true,
+  });
   const query = getQuery(event);
   const stationId = parseStationId(query.station_id);
   const dias = parsePeriodo(query.periodo);

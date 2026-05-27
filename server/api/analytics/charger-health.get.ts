@@ -1,5 +1,6 @@
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
+import { defineCachedEventHandler } from 'nitropack/runtime';
 
 const DIAS_POR_PERIODO: Record<string, number | null> = {
   today: 1,
@@ -96,7 +97,7 @@ function fiabilidadDesdeMetrica(uptime: number, desconexionesPor30d: number): 'g
   return 'red';
 }
 
-export default defineEventHandler(async (event) => {
+export default defineCachedEventHandler(async (event) => {
   const query = getQuery(event);
   const stationId = parseStationId(query.station_id);
   const dias = parsePeriodo(query.periodo);
@@ -206,4 +207,8 @@ export default defineEventHandler(async (event) => {
     stationId,
     porEstacion,
   };
+}, {
+  name: 'analytics-charger-health',
+  maxAge: 3600,
+  swr: true,
 });

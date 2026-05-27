@@ -1,5 +1,6 @@
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
+import { defineCachedEventHandler } from 'nitropack/runtime';
 
 const DIAS_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
@@ -57,7 +58,7 @@ async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 10
   return allRows;
 }
 
-export default defineEventHandler(async (event) => {
+export default defineCachedEventHandler(async (event) => {
   const query = getQuery(event);
   const stationId = parseStationId(query.station_id);
 
@@ -160,4 +161,8 @@ export default defineEventHandler(async (event) => {
   }
 
   return { recommendations: recommendations.slice(0, 5) };
+}, {
+  name: 'analytics-recommendations',
+  maxAge: 3600,
+  swr: true,
 });
