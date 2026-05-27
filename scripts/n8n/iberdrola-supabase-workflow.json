@@ -7,7 +7,7 @@
           "interval": [
             {
               "field": "minutes",
-              "minutesInterval": 5
+              "minutesInterval": 2
             }
           ]
         }
@@ -101,6 +101,16 @@
               "name": "scraperStationIds",
               "type": "string",
               "value": "ESIBE22E0001001,ESIBE22E0001002,ESIBE22E0001003,ESIBE22E0001004,ESIBE22E0001005,IBERDROLA-5629"
+            },
+            {
+              "name": "n8nNotifyWebhookUrl",
+              "type": "string",
+              "value": "http://umbrel.local:5678/webhook/ev-notify-db"
+            },
+            {
+              "name": "n8nNotifyWebhookSecret",
+              "type": "string",
+              "value": ""
             }
           ]
         },
@@ -128,6 +138,49 @@
         780,
         280
       ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$node[\"Configuracion\"].json[\"n8nNotifyWebhookUrl\"]}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-notify-secret",
+              "value": "={{$node[\"Configuracion\"].json[\"n8nNotifyWebhookSecret\"]}}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "sourceWorkflow",
+              "value": "iberdrola-supabase-aspe"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{$json.timestamp}}"
+            },
+            {
+              "name": "inserted",
+              "value": "={{$json.inserted}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "http_notify_workflow_1",
+      "name": "Disparar notificaciones n8n",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        280
+      ]
     }
   ],
   "connections": {
@@ -147,6 +200,17 @@
         [
           {
             "node": "Scrape + Insert Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape + Insert Supabase": {
+      "main": [
+        [
+          {
+            "node": "Disparar notificaciones n8n",
             "type": "main",
             "index": 0
           }

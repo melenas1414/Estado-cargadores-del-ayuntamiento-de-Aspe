@@ -81,3 +81,110 @@ COMMENT ON COLUMN public.charging_logs.out_of_service_connectors IS 'Número de 
 COMMENT ON COLUMN public.charging_logs.availability_updated_at IS 'Fecha y hora del último dato dinámico reportado por Google Places';
 COMMENT ON COLUMN public.charging_logs.source        IS 'Origen del dato: google-places, estimated-network-ratio:..., google-places-error:...';
 COMMENT ON COLUMN public.charging_logs.data_quality  IS 'Calidad del dato: observed = dato real de Google Places, estimated = estimación por ratio de red';
+
+-- ─── Login Telegram + suscripciones temporales (MVP) ─────────────────────
+
+CREATE TABLE IF NOT EXISTS public.telegram_users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  telegram_user_id BIGINT NOT NULL UNIQUE,
+  telegram_chat_id BIGINT,
+  telegram_username TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS public.telegram_login_challenges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  challenge_token TEXT NOT NULL UNIQUE,
+  otp_code TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  verified_at TIMESTAMPTZ,
+  telegram_user_id BIGINT,
+  telegram_chat_id BIGINT,
+  telegram_username TEXT,
+  requested_ip TEXT
+);
+
+CREATE TABLE IF NOT EXISTS public.telegram_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  user_id UUID NOT NULL REFERENCES public.telegram_users(id) ON DELETE CASCADE,
+  session_token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.notification_subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  user_id UUID NOT NULL REFERENCES public.telegram_users(id) ON DELETE CASCADE,
+  station_id TEXT,
+  zone TEXT,
+  notify_mode TEXT NOT NULL DEFAULT 'first_only',
+  cooldown_minutes INT NOT NULL DEFAULT 30,
+  expires_at TIMESTAMPTZ NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  last_notified_at TIMESTAMPTZ,
+  CHECK (station_id IS NOT NULL OR zone IS NOT NULL),
+  CHECK (notify_mode IN ('first_only', 'repeat')),
+  CHECK (cooldown_minutes BETWEEN 1 AND 720)
+);
+
+CREATE TABLE IF NOT EXISTS public.notification_dispatches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  subscription_id UUID NOT NULL REFERENCES public.notification_subscriptions(id) ON DELETE CASCADE,
+  event_key TEXT NOT NULL,
+  wave TEXT NOT NULL,
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (wave IN ('priority', 'regular')),
+  UNIQUE (subscription_id, event_key, wave)
+);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_sessions_hash
+  ON public.telegram_sessions (session_token_hash);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_sessions_expires_at
+  ON public.telegram_sessions (expires_at);
+
+CREATE INDEX IF NOT EXISTS idx_notification_subscriptions_station
+  ON public.notification_subscriptions (station_id, active, expires_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_notification_subscriptions_zone
+  ON public.notification_subscriptions (zone, active, expires_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_notification_dispatches_event
+  ON public.notification_dispatches (event_key, wave, created_at DESC);
+
+ALTER TABLE public.telegram_users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.telegram_login_challenges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.telegram_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_dispatches ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role only telegram_users"
+  ON public.telegram_users
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role only telegram_login_challenges"
+  ON public.telegram_login_challenges
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role only telegram_sessions"
+  ON public.telegram_sessions
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role only notification_subscriptions"
+  ON public.notification_subscriptions
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service role only notification_dispatches"
+  ON public.notification_dispatches
+  USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');

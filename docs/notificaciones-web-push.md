@@ -1,5 +1,83 @@
 # Sistema de Notificaciones Web Push
 
+## Actualizacion: Login Telegram + notificaciones temporales
+
+Se ha iniciado la implementacion de un sistema paralelo por Telegram (sin reemplazar aun el plan Web Push):
+
+- Login web con Telegram oficial (hash firmado por Telegram Login).
+- Suscripciones temporales por cargador o por zona.
+- Trigger de notificaciones con envio directo desde n8n a Telegram, en dos olas:
+  - Ola `priority`: usuarios definidos en variable de entorno/config.
+  - Ola `regular`: resto de suscriptores, tras espera en n8n inferior a 2 minutos.
+
+### Variables de entorno nuevas
+
+```
+TELEGRAM_BOT_TOKEN=
+NUXT_PUBLIC_TELEGRAM_BOT_USERNAME=
+NUXT_PUBLIC_TELEGRAM_BOT_ID=
+TELEGRAM_SESSION_SECRET=
+TELEGRAM_AUTH_CHALLENGE_TTL_SECONDS=600
+TELEGRAM_SESSION_TTL_DAYS=14
+TELEGRAM_CLAIM_SECRET=
+NOTIFICATION_TRIGGER_SECRET=
+PRIORITY_TELEGRAM_USERS=
+PRIORITY_MATCH_FIELD=telegram_user_id
+PRIORITY_NOTIFY_DELAY_SECONDS=120
+```
+
+### Endpoints implementados (MVP backend)
+
+- `POST /api/subscriptions/cancel` -> cancela suscripciones activas del usuario (por `subscriptionId`, `stationId`, `zone` o `all=true`).
+
+### Persistencia de login en app
+
+- Se ha añadido restauracion automatica de sesion al arrancar cliente.
+- El plugin cliente consulta `GET /api/auth/session` y actualiza estado global (`user`, `isAuthenticated`).
+- Si hay cookie valida, el usuario permanece logueado entre recargas sin relogin manual.
+
+### Flujo recomendado en n8n para prioridad
+
+Flujo nuevo recomendado (sin endpoint API de notificaciones en la app):
+
+1. Workflow `Iberdrola -> Supabase Aspe` inserta muestras en `charging_logs`.
+2. Al final, nodo `Disparar notificaciones n8n` llama webhook interno de n8n.
+3. Workflow `Telegram notifications from DB`:
+  - Detecta transiciones ocupado -> libre en ventana reciente.
+  - Envia primero a usuarios prioritarios.
+  - Espera (`regularWaveWaitSeconds`) por defecto 75s.
+  - Envia la ola regular.
+  - Registra deduplicacion en `notification_dispatches`.
+
+Cabecera requerida para el webhook interno de notificaciones:
+
+```
+x-notify-secret: <N8N_NOTIFY_WEBHOOK_SECRET>
+```
+
+Archivo del nuevo flujo: `scripts/n8n/telegram-notifications-db-workflow.json`.
+
+### Flujo de login Telegram oficial (app)
+
+La app ya no depende de un workflow n8n para autenticar usuarios.
+
+1. Frontend abre `Telegram.Login.auth(...)` con `NUXT_PUBLIC_TELEGRAM_BOT_ID`.
+2. Telegram devuelve payload firmado (`id`, `auth_date`, `hash`, etc.).
+3. Backend valida la firma en `POST /api/auth/telegram/widget-login`.
+4. Si es valido, crea/actualiza usuario y emite cookie de sesion web.
+
+Body minimo:
+
+```json
+{
+  "eventKey": "libre_ahora:ESIBE22E0001001:2026-05-20T09:00:00Z",
+  "stationId": "ESIBE22E0001001",
+  "message": "Tu cargador suscrito esta disponible ahora.",
+  "url": "https://cargadores-aspe.onlineexpansions.com/charger/ESIBE22E0001001",
+  "wave": "priority"
+}
+```
+
 ## Estado: ⏳ Pendiente de implementar
 
 ---

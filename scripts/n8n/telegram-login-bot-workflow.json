@@ -1,0 +1,246 @@
+{
+  "name": "Telegram Login Bot Aspe",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ]
+      },
+      "id": "telegram_trigger_1",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        260,
+        280
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "PLEASE_CONFIGURE",
+          "name": "Telegram Bot Aspe"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "app-base-url",
+              "name": "appBaseUrl",
+              "type": "string",
+              "value": "http://TU-HOST:3000"
+            },
+            {
+              "id": "claim-secret",
+              "name": "claimSecret",
+              "type": "string",
+              "value": "PEGA_AQUI_TELEGRAM_CLAIM_SECRET"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config_node_1",
+      "name": "Configuracion",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        520,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "var first = $input.first();\nvar item = (first && first.json) ? first.json : {};\n\nvar triggerNode = $node['Telegram Trigger'];\nvar triggerJson = (triggerNode && triggerNode.json) ? triggerNode.json : {};\n\nvar message = triggerJson.message || triggerJson.edited_message || item.message || item.edited_message || {};\nvar text = String(message.text || '').trim();\nvar chatId = (message.chat && message.chat.id) ? message.chat.id : null;\nvar telegramUserId = (message.from && message.from.id) ? message.from.id : null;\nvar telegramUsername = (message.from && message.from.username) ? message.from.username : null;\n\nvar appBaseUrl = String(item.appBaseUrl || '').trim();\nif (appBaseUrl.length > 1 && appBaseUrl.charAt(appBaseUrl.length - 1) === '/') {\n  appBaseUrl = appBaseUrl.slice(0, -1);\n}\nvar claimSecret = String(item.claimSecret || '').trim();\n\nif (!text) {\n  return [];\n}\n\nif (text.indexOf('/start') !== 0) {\n  return [];\n}\n\nvar payload = text.replace(/^\\/start\\s*/, '').trim();\nvar parts = payload.split('_');\nif (parts.length < 3 || parts[0] !== 'login') {\n  return [{ json: { action: 'help', chatId: chatId, telegramUserId: telegramUserId, telegramUsername: telegramUsername, text: 'Usa el boton de la app para iniciar el login.' } }];\n}\n\nif (!appBaseUrl || !claimSecret || appBaseUrl.indexOf('TU-HOST') !== -1 || claimSecret.indexOf('PEGA_AQUI') !== -1) {\n  return [{ json: { action: 'help', chatId: chatId, telegramUserId: telegramUserId, telegramUsername: telegramUsername, text: 'Configura appBaseUrl y claimSecret en el nodo Configuracion.' } }];\n}\n\nvar challengeToken = parts[1];\nvar otpCode = parts.slice(2).join('_');\n\nreturn [{\n  json: {\n    action: 'claim',\n    chatId: chatId,\n    telegramUserId: telegramUserId,\n    telegramUsername: telegramUsername,\n    telegramChatId: chatId,\n    challengeToken: challengeToken,\n    otpCode: otpCode,\n    appBaseUrl: appBaseUrl,\n    claimSecret: claimSecret\n  }\n}];"
+      },
+      "id": "parse_start_1",
+      "name": "Parse /start payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.action === 'claim' }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if_claim_1",
+      "name": "Is claim action?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.appBaseUrl + '/api/auth/telegram/claim' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-telegram-claim-secret",
+              "value": "={{ $json.claimSecret }}"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "challengeToken",
+              "value": "={{ $json.challengeToken }}"
+            },
+            {
+              "name": "otpCode",
+              "value": "={{ $json.otpCode }}"
+            },
+            {
+              "name": "telegramUserId",
+              "value": "={{ $json.telegramUserId }}"
+            },
+            {
+              "name": "telegramChatId",
+              "value": "={{ $json.telegramChatId }}"
+            },
+            {
+              "name": "telegramUsername",
+              "value": "={{ $json.telegramUsername }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "claim_http_1",
+      "name": "Claim login in app",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1260,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendMessage",
+        "chatId": "={{ $node[\"Parse /start payload\"].json.chatId }}",
+        "text": "={{ $node[\"Parse /start payload\"].json.action === 'claim' ? (((Number($node[\"Claim login in app\"].json.statusCode || 500)) >= 200 && (Number($node[\"Claim login in app\"].json.statusCode || 500)) < 300) ? 'Login verificado. Vuelve a la app y ya deberias aparecer conectado.' : ('No pude validar el login (' + (($node[\"Claim login in app\"].json.body && ($node[\"Claim login in app\"].json.body.statusMessage || $node[\"Claim login in app\"].json.body.message)) || $node[\"Claim login in app\"].json.statusMessage || 'error de claim') + '). Pulsa Entrar en la app y prueba de nuevo.')) : $node[\"Parse /start payload\"].json.text }}"
+      },
+      "id": "send_message_1",
+      "name": "Telegram Send Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        280
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "PLEASE_CONFIGURE",
+          "name": "Telegram Bot Aspe"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Configuracion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuracion": {
+      "main": [
+        [
+          {
+            "node": "Parse /start payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse /start payload": {
+      "main": [
+        [
+          {
+            "node": "Is claim action?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is claim action?": {
+      "main": [
+        [
+          {
+            "node": "Claim login in app",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim login in app": {
+      "main": [
+        [
+          {
+            "node": "Telegram Send Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "versionId": "1"
+}

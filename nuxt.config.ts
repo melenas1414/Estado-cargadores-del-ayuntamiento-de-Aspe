@@ -40,11 +40,22 @@ export default defineNuxtConfig({
     iberdrolaApiUrl:    process.env.IBERDROLA_API_URL ?? '',
     iberdrolaApiKey:    process.env.IBERDROLA_API_KEY ?? '',
     chargersVisibleStationIds: process.env.CHARGERS_VISIBLE_STATION_IDS ?? '',
+    telegramBotToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+    telegramSessionSecret: process.env.TELEGRAM_SESSION_SECRET ?? '',
+    telegramAuthChallengeTtlSeconds: Number(process.env.TELEGRAM_AUTH_CHALLENGE_TTL_SECONDS ?? '600'),
+    telegramSessionTtlDays: Number(process.env.TELEGRAM_SESSION_TTL_DAYS ?? '14'),
+    telegramClaimSecret: process.env.TELEGRAM_CLAIM_SECRET ?? '',
+    notificationTriggerSecret: process.env.NOTIFICATION_TRIGGER_SECRET ?? '',
+    priorityTelegramUsers: process.env.PRIORITY_TELEGRAM_USERS ?? '',
+    priorityNotifyDelaySeconds: Number(process.env.PRIORITY_NOTIFY_DELAY_SECONDS ?? '120'),
+    priorityMatchField: process.env.PRIORITY_MATCH_FIELD ?? 'telegram_user_id',
     // Disponibles en cliente y servidor (prefijo "public")
     public: {
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL ?? '',
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL ?? 'https://cargadores-aspe.onlineexpansions.com',
       googleAnalyticsId: process.env.NUXT_PUBLIC_GA_ID?.trim() || 'G-E91PCLPFL3',
+      telegramBotUsername: process.env.NUXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? '',
+      telegramBotId: process.env.NUXT_PUBLIC_TELEGRAM_BOT_ID ?? '',
     },
   },
 
@@ -95,7 +106,9 @@ export default defineNuxtConfig({
   routeRules: {
     '/resumen': { redirect: { to: '/', statusCode: 301 } },
     '/admin/**': {
-      robots: false,
+      headers: {
+        'x-robots-tag': 'noindex, nofollow',
+      },
     },
   },
 });
