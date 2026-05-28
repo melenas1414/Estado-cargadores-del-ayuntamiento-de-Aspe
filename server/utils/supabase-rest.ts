@@ -38,7 +38,7 @@ export async function supabaseRestRequest<T>(
         throw createError({
           statusCode: 503,
           statusMessage:
-            'Faltan tablas nuevas en Supabase. Ejecuta supabase/schema.sql para crear telegram_login_challenges, telegram_users, telegram_sessions y notification_subscriptions.',
+            'Faltan tablas en Supabase. Ejecuta supabase/schema.sql (o los modulos de supabase/schema) para crear charging_logs, telegram_users, notification_subscriptions y notification_dispatches.',
         });
       }
     },
