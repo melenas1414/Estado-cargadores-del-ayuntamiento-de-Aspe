@@ -1,5 +1,6 @@
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
+import { defineCachedEventHandler } from 'nitropack/runtime';
 
 type NivelConfianza = 'alta' | 'media' | 'baja';
 
@@ -93,13 +94,7 @@ function confidenceFromSamples(n: number): NivelConfianza {
   return 'baja';
 }
 
-export default defineEventHandler(async (event) => {
-  export default defineCachedEventHandler(async (event) => {
-  }, {
-    name: 'analytics-estimated-release',
-    maxAge: 3600,
-    swr: true,
-  });
+export default defineCachedEventHandler(async (event) => {
   const query = getQuery(event);
   const requestedStationId = parseStationId(query.station_id);
   const days = parseDays(query.dias_historico);
@@ -253,4 +248,8 @@ export default defineEventHandler(async (event) => {
     diasHistorico: days,
     muestraMinutos: sampleMin,
   };
+}, {
+  name: 'analytics-estimated-release',
+  maxAge: 3600,
+  swr: true,
 });

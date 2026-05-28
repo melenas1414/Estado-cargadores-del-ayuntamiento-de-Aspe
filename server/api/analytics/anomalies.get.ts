@@ -1,5 +1,6 @@
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
+import { defineCachedEventHandler } from 'nitropack/runtime';
 
 const DIAS_POR_PERIODO: Record<string, number | null> = {
   '7d': 7,
@@ -58,13 +59,7 @@ async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 10
   return allRows;
 }
 
-export default defineEventHandler(async (event) => {
-  export default defineCachedEventHandler(async (event) => {
-  }, {
-    name: 'analytics-anomalies',
-    maxAge: 3600,
-    swr: true,
-  });
+export default defineCachedEventHandler(async (event) => {
   const query = getQuery(event);
   const dias = parsePeriodo(query.period);
 
@@ -190,4 +185,8 @@ export default defineEventHandler(async (event) => {
       })
       .slice(0, 12),
   };
+}, {
+  name: 'analytics-anomalies',
+  maxAge: 3600,
+  swr: true,
 });

@@ -11,6 +11,7 @@
  */
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
+import { defineCachedEventHandler } from 'nitropack/runtime';
 
 const DIAS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 const VENTANA_HISTORICA_DIAS = 56;
@@ -119,13 +120,7 @@ async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 10
   return allRows;
 }
 
-export default defineEventHandler(async (event) => {
-  export default defineCachedEventHandler(async (event) => {
-  }, {
-    name: 'analytics-prediction',
-    maxAge: 3600,
-    swr: true,
-  });
+export default defineCachedEventHandler(async (event) => {
   const supabase = await serverSupabaseClient(event);
   const query = getQuery(event);
   const diasHaciaFuturo = parseDiasHaciaFuturo(query.dias);
@@ -332,4 +327,8 @@ export default defineEventHandler(async (event) => {
     diasFaltantesEstimados: Math.max(0, MIN_DIAS_CON_DATOS_WEEKDAY - diasConDatos),
     ventanaHistoricaDias: VENTANA_HISTORICA_DIAS,
   };
+}, {
+  name: 'analytics-prediction',
+  maxAge: 3600,
+  swr: true,
 });

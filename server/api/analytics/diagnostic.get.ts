@@ -1,5 +1,6 @@
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
+import { defineCachedEventHandler } from 'nitropack/runtime';
 
 const DIAS_POR_PERIODO: Record<string, number | null> = {
   today: 1,
@@ -102,13 +103,7 @@ function inferZona(locationName: string): string {
   return sinNumero || base;
 }
 
-export default defineEventHandler(async (event) => {
-  export default defineCachedEventHandler(async (event) => {
-  }, {
-    name: 'analytics-diagnostic',
-    maxAge: 3600,
-    swr: true,
-  });
+export default defineCachedEventHandler(async (event) => {
   const query = getQuery(event);
   const periodo = String(query.periodo ?? '7d');
   const dias = Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)
@@ -363,4 +358,8 @@ export default defineEventHandler(async (event) => {
     insights,
     zonasPrioritarias,
   };
+}, {
+  name: 'analytics-diagnostic',
+  maxAge: 3600,
+  swr: true,
 });

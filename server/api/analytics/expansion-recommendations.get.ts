@@ -1,5 +1,6 @@
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
+import { defineCachedEventHandler } from 'nitropack/runtime';
 
 // Coordenadas de estaciones actuales (lat, lon)
 const ESTACIONES_ACTUALES = {
@@ -232,13 +233,7 @@ function distanciaMinimaARecomendacionesExistentes(
   return Math.min(...recomendaciones.map((reco) => distancia(lat, lon, reco.lat, reco.lon)));
 }
 
-export default defineEventHandler(async (event) => {
-  export default defineCachedEventHandler(async (event) => {
-  }, {
-    name: 'analytics-expansion-recommendations',
-    maxAge: 3600,
-    swr: true,
-  });
+export default defineCachedEventHandler(async (event) => {
   const query = getQuery(event);
   const periodo = String(query.periodo ?? '30d');
 
@@ -494,4 +489,8 @@ export default defineEventHandler(async (event) => {
       coberturaMunicipal: `${Math.round((estacionesActuales.length / 5) * 100)}% de cobertura actual`,
     },
   };
+}, {
+  name: 'analytics-expansion-recommendations',
+  maxAge: 3600,
+  swr: true,
 });

@@ -1,5 +1,6 @@
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
+import { defineCachedEventHandler } from 'nitropack/runtime';
 
 const DIAS_POR_PERIODO: Record<string, number | null> = {
   today: 1,
@@ -37,13 +38,7 @@ function parsePeriodo(raw: unknown): number | null {
   return DIAS_POR_PERIODO[periodo];
 }
 
-export default defineEventHandler(async (event) => {
-  export default defineCachedEventHandler(async (event) => {
-  }, {
-    name: 'analytics-eta',
-    maxAge: 3600,
-    swr: true,
-  });
+export default defineCachedEventHandler(async (event) => {
   const query = getQuery(event);
   const minutes = parseMinutes(query.minutes);
   const dias = parsePeriodo(query.periodo);
@@ -155,4 +150,8 @@ export default defineEventHandler(async (event) => {
     estacionRecomendada: recomendada,
     porEstacion,
   };
+}, {
+  name: 'analytics-eta',
+  maxAge: 3600,
+  swr: true,
 });
