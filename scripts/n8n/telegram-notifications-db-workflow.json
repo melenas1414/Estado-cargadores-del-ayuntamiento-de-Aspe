@@ -1,0 +1,177 @@
+{
+  "name": "Telegram notifications from DB",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ev-notify-db",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook_trigger_1",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "supabase-url",
+              "name": "supabaseUrl",
+              "type": "string",
+              "value": "https://TU-PROYECTO.supabase.co"
+            },
+            {
+              "id": "supabase-key",
+              "name": "supabaseServiceRoleKey",
+              "type": "string",
+              "value": "PEGA_AQUI_TU_SERVICE_ROLE_KEY"
+            },
+            {
+              "id": "telegram-bot-token",
+              "name": "telegramBotToken",
+              "type": "string",
+              "value": "PEGA_AQUI_TU_TELEGRAM_BOT_TOKEN"
+            },
+            {
+              "id": "wait-seconds",
+              "name": "regularWaveWaitSeconds",
+              "type": "number",
+              "value": 75
+            },
+            {
+              "id": "notify-base-url",
+              "name": "publicBaseUrl",
+              "type": "string",
+              "value": "https://cargadores-aspe.onlineexpansions.com"
+            },
+            {
+              "id": "webhook-secret",
+              "name": "notifyWebhookSecret",
+              "type": "string",
+              "value": ""
+            },
+            {
+              "id": "lookback-minutes",
+              "name": "lookbackMinutes",
+              "type": "number",
+              "value": 6
+            }
+          ]
+        },
+        "options": {
+          "includeOtherFields": true
+        }
+      },
+      "id": "config_node_1",
+      "name": "Configuracion",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        460,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json || {};\nconst headers = input.headers || {};\n\nconst SUPABASE_URL = String(input.supabaseUrl || '').trim();\nconst SUPABASE_SERVICE_ROLE_KEY = String(input.supabaseServiceRoleKey || '').trim();\nconst TELEGRAM_BOT_TOKEN = String(input.telegramBotToken || '').trim();\nconst SECRET_EXPECTED = String(input.notifyWebhookSecret || '').trim();\nconst SECRET_RECEIVED = String(headers['x-notify-secret'] || headers['X-Notify-Secret'] || '').trim();\nconst LOOKBACK_MINUTES = Number(input.lookbackMinutes || 6);\nconst waitSecondsRaw = Number(input.regularWaveWaitSeconds || 75);\nconst WAIT_SECONDS = Number.isFinite(waitSecondsRaw) ? Math.max(10, Math.min(110, waitSecondsRaw)) : 75;\nconst PUBLIC_BASE_URL = String(input.publicBaseUrl || 'https://cargadores-aspe.onlineexpansions.com').replace(/\\/+$/, '');\n\nif (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error('Faltan credenciales de Supabase');\nif (!TELEGRAM_BOT_TOKEN) throw new Error('Falta TELEGRAM_BOT_TOKEN');\nif (SECRET_EXPECTED && SECRET_EXPECTED !== SECRET_RECEIVED) throw new Error('Webhook secret invalido');\n\nasync function requestText(url, options) {\n  if (typeof fetch === 'function') {\n    const response = await fetch(url, options);\n    const body = await response.text();\n    return { ok: response.ok, status: response.status, body: body };\n  }\n  const helper = this && this.helpers && this.helpers.httpRequest;\n  if (typeof helper !== 'function') throw new Error('fetch no disponible en este nodo de n8n');\n  const response = await helper({\n    url: url,\n    method: options.method || 'GET',\n    headers: options.headers,\n    body: options.body,\n    json: false,\n    returnFullResponse: true,\n    ignoreHttpStatusErrors: true\n  });\n  return {\n    ok: response.statusCode >= 200 && response.statusCode < 300,\n    status: response.statusCode,\n    body: typeof response.body === 'string' ? response.body : JSON.stringify(response.body || '')\n  };\n}\n\nfunction supabaseHeaders(prefer) {\n  const headersOut = {\n    apikey: SUPABASE_SERVICE_ROLE_KEY,\n    Authorization: 'Bearer ' + SUPABASE_SERVICE_ROLE_KEY,\n    'Content-Type': 'application/json'\n  };\n  if (prefer) headersOut.Prefer = prefer;\n  return headersOut;\n}\n\nasync function supabaseGet(path) {\n  const response = await requestText.call(this, SUPABASE_URL + '/rest/v1/' + path, { method: 'GET', headers: supabaseHeaders() });\n  if (!response.ok) throw new Error('Supabase GET fallo: ' + path + ' -> ' + response.status + ' ' + response.body);\n  return response.body ? JSON.parse(response.body) : [];\n}\n\nasync function supabasePost(path, payload, prefer) {\n  const response = await requestText.call(this, SUPABASE_URL + '/rest/v1/' + path, { method: 'POST', headers: supabaseHeaders(prefer), body: JSON.stringify(payload) });\n  if (!response.ok) throw new Error('Supabase POST fallo: ' + path + ' -> ' + response.status + ' ' + response.body);\n  return response.body ? JSON.parse(response.body) : [];\n}\n\nasync function supabasePatch(path, payload) {\n  const response = await requestText.call(this, SUPABASE_URL + '/rest/v1/' + path, { method: 'PATCH', headers: supabaseHeaders('return=minimal'), body: JSON.stringify(payload) });\n  if (!response.ok) throw new Error('Supabase PATCH fallo: ' + path + ' -> ' + response.status + ' ' + response.body);\n}\n\nasync function sendTelegram(chatId, text) {\n  const response = await requestText.call(this, 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendMessage', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ chat_id: String(chatId), text: text, disable_web_page_preview: true })\n  });\n  if (!response.ok) throw new Error('Telegram sendMessage fallo: ' + response.status + ' ' + response.body);\n}\n\nfunction parseMaxFromZone(zone) {\n  const text = String(zone || '');\n  if (text.indexOf('maxlimit:') !== 0) return 0;\n  const n = Number(text.split(':')[1]);\n  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;\n}\n\nasync function getDispatchCount(subscriptionId) {\n  const rows = await supabaseGet.call(this, 'notification_dispatches?select=id&subscription_id=eq.' + encodeURIComponent(subscriptionId) + '&limit=1000');\n  return Array.isArray(rows) ? rows.length : 0;\n}\n\nfunction buildMessage(eventItem) {\n  return 'Cargador libre ahora\\n' + eventItem.locationName + '\\n\\nVer estado: ' + PUBLIC_BASE_URL + '/charger/' + encodeURIComponent(eventItem.stationId);\n}\n\nfunction markPatch(sub, dispatchCountBefore) {\n  const nowIso = new Date().toISOString();\n  const maxNotifications = parseMaxFromZone(sub.zone);\n  const countAfterSend = dispatchCountBefore + 1;\n  if (sub.notify_mode === 'first_only') return { last_notified_at: nowIso, active: false };\n  if (maxNotifications && countAfterSend >= maxNotifications) return { last_notified_at: nowIso, active: false };\n  return { last_notified_at: nowIso };\n}\n\nconst lookbackIso = new Date(Date.now() - LOOKBACK_MINUTES * 60 * 1000).toISOString();\nconst logs = await supabaseGet.call(this, 'charging_logs?select=id,created_at,station_id,location_name,is_available&created_at=gt.' + encodeURIComponent(lookbackIso) + '&order=station_id.asc,created_at.desc&limit=500');\n\nconst byStation = new Map();\nfor (const row of logs) {\n  const list = byStation.get(row.station_id) || [];\n  if (list.length < 2) list.push(row);\n  byStation.set(row.station_id, list);\n}\n\nconst freeEvents = [];\nfor (const pair of byStation.values()) {\n  if (pair.length < 2) continue;\n  const current = pair[0];\n  const previous = pair[1];\n  if (!previous.is_available && current.is_available) {\n    freeEvents.push({\n      stationId: current.station_id,\n      locationName: current.location_name,\n      eventKey: 'libre_ahora:' + current.station_id + ':' + current.created_at\n    });\n  }\n}\n\nif (!freeEvents.length) {\n  return [{ json: { ok: true, info: 'Sin eventos de liberacion en esta ventana', waitSeconds: WAIT_SECONDS, pendingRegular: [] } }];\n}\n\nconst nowIso = new Date().toISOString();\nconst pendingRegular = [];\nconst sentPremium = [];\nconst skipped = [];\n\nfor (const eventItem of freeEvents) {\n  const subsPath = 'notification_subscriptions?select=id,user_id,notify_mode,zone,cooldown_minutes,last_notified_at,user:telegram_users(telegram_user_id,telegram_chat_id,telegram_username,is_premium,is_active)&active=eq.true&station_id=eq.' + encodeURIComponent(eventItem.stationId) + '&expires_at=gt.' + encodeURIComponent(nowIso) + '&limit=500';\n  const subscriptions = await supabaseGet.call(this, subsPath);\n\n  for (const sub of subscriptions) {\n    const user = sub.user || {};\n    const chatId = user.telegram_chat_id ? String(user.telegram_chat_id) : '';\n\n    if (!user.is_active || !chatId) {\n      skipped.push({ reason: 'usuario_inactivo_o_sin_chat_id', subscriptionId: sub.id, stationId: eventItem.stationId });\n      continue;\n    }\n\n    if (sub.last_notified_at) {\n      const cooldownMs = Number(sub.cooldown_minutes || 30) * 60 * 1000;\n      const lastMs = new Date(sub.last_notified_at).getTime();\n      if (Number.isFinite(lastMs) && Date.now() - lastMs < cooldownMs) {\n        skipped.push({ reason: 'cooldown_activo', subscriptionId: sub.id, stationId: eventItem.stationId });\n        continue;\n      }\n    }\n\n    const maxNotifications = parseMaxFromZone(sub.zone);\n    const dispatchCountBefore = maxNotifications ? await getDispatchCount.call(this, sub.id) : 0;\n    if (maxNotifications && dispatchCountBefore >= maxNotifications) {\n      await supabasePatch.call(this, 'notification_subscriptions?id=eq.' + encodeURIComponent(sub.id), { active: false });\n      skipped.push({ reason: 'max_notificaciones_alcanzado', subscriptionId: sub.id, stationId: eventItem.stationId });\n      continue;\n    }\n\n    if (user.is_premium) {\n      const inserted = await supabasePost.call(this, 'notification_dispatches?on_conflict=subscription_id,event_key,wave', [{ subscription_id: sub.id, event_key: eventItem.eventKey, wave: 'priority' }], 'resolution=ignore-duplicates,return=representation');\n      if (!Array.isArray(inserted) || !inserted.length) {\n        skipped.push({ reason: 'dispatch_premium_duplicado', subscriptionId: sub.id, stationId: eventItem.stationId });\n        continue;\n      }\n      await sendTelegram.call(this, chatId, buildMessage(eventItem));\n      await supabasePatch.call(this, 'notification_subscriptions?id=eq.' + encodeURIComponent(sub.id), markPatch(sub, dispatchCountBefore));\n      sentPremium.push({ subscriptionId: sub.id, stationId: eventItem.stationId, telegramUserId: user.telegram_user_id ? String(user.telegram_user_id) : null });\n      continue;\n    }\n\n    pendingRegular.push({\n      subscriptionId: sub.id,\n      stationId: eventItem.stationId,\n      locationName: eventItem.locationName,\n      eventKey: eventItem.eventKey,\n      telegramChatId: chatId,\n      notifyMode: sub.notify_mode,\n      zone: sub.zone\n    });\n  }\n}\n\nreturn [{ json: { ok: true, waitSeconds: WAIT_SECONDS, sentPremiumCount: sentPremium.length, pendingRegular: pendingRegular, skipped: skipped } }];"
+      },
+      "id": "code_priority_1",
+      "name": "Procesar y enviar premium",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        740,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "unit": "seconds",
+        "amount": "={{$json.waitSeconds || 75}}"
+      },
+      "id": "wait_1",
+      "name": "Espera ola regular",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1000,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json || {};\nconst pendingRegular = Array.isArray(input.pendingRegular) ? input.pendingRegular : [];\nif (!pendingRegular.length) return [{ json: { ok: true, sentRegularCount: 0, info: 'No hay pendientes para ola regular' } }];\n\nconst config = $('Configuracion').first().json || {};\nconst SUPABASE_URL = String(config.supabaseUrl || '').trim();\nconst SUPABASE_SERVICE_ROLE_KEY = String(config.supabaseServiceRoleKey || '').trim();\nconst TELEGRAM_BOT_TOKEN = String(config.telegramBotToken || '').trim();\nconst PUBLIC_BASE_URL = String(config.publicBaseUrl || 'https://cargadores-aspe.onlineexpansions.com').replace(/\\/+$/, '');\n\nif (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !TELEGRAM_BOT_TOKEN) throw new Error('Faltan variables para ola regular');\n\nasync function requestText(url, options) {\n  if (typeof fetch === 'function') {\n    const response = await fetch(url, options);\n    const body = await response.text();\n    return { ok: response.ok, status: response.status, body: body };\n  }\n  const helper = this && this.helpers && this.helpers.httpRequest;\n  if (typeof helper !== 'function') throw new Error('fetch no disponible en este nodo de n8n');\n  const response = await helper({\n    url: url,\n    method: options.method || 'GET',\n    headers: options.headers,\n    body: options.body,\n    json: false,\n    returnFullResponse: true,\n    ignoreHttpStatusErrors: true\n  });\n  return { ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body: typeof response.body === 'string' ? response.body : JSON.stringify(response.body || '') };\n}\n\nfunction supabaseHeaders(prefer) {\n  const headersOut = { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_ROLE_KEY, 'Content-Type': 'application/json' };\n  if (prefer) headersOut.Prefer = prefer;\n  return headersOut;\n}\n\nasync function supabaseGet(path) {\n  const response = await requestText.call(this, SUPABASE_URL + '/rest/v1/' + path, { method: 'GET', headers: supabaseHeaders() });\n  if (!response.ok) throw new Error('Supabase GET fallo: ' + path + ' -> ' + response.status + ' ' + response.body);\n  return response.body ? JSON.parse(response.body) : [];\n}\n\nasync function supabasePatch(path, payload) {\n  const response = await requestText.call(this, SUPABASE_URL + '/rest/v1/' + path, { method: 'PATCH', headers: supabaseHeaders('return=minimal'), body: JSON.stringify(payload) });\n  if (!response.ok) throw new Error('Supabase PATCH fallo: ' + path + ' -> ' + response.status + ' ' + response.body);\n}\n\nasync function insertDispatch(subscriptionId, eventKey) {\n  const response = await requestText.call(this, SUPABASE_URL + '/rest/v1/notification_dispatches?on_conflict=subscription_id,event_key,wave', {\n    method: 'POST',\n    headers: supabaseHeaders('resolution=ignore-duplicates,return=representation'),\n    body: JSON.stringify([{ subscription_id: subscriptionId, event_key: eventKey, wave: 'regular' }])\n  });\n  if (!response.ok) throw new Error('No se pudo insertar dispatch regular: HTTP ' + response.status + ' ' + response.body);\n  return response.body ? JSON.parse(response.body) : [];\n}\n\nasync function sendTelegram(chatId, text) {\n  const response = await requestText.call(this, 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/sendMessage', {\n    method: 'POST',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ chat_id: String(chatId), text: text, disable_web_page_preview: true })\n  });\n  if (!response.ok) throw new Error('Telegram sendMessage regular fallo: HTTP ' + response.status + ' ' + response.body);\n}\n\nfunction parseMaxFromZone(zone) {\n  const text = String(zone || '');\n  if (text.indexOf('maxlimit:') !== 0) return 0;\n  const n = Number(text.split(':')[1]);\n  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;\n}\n\nasync function getDispatchCount(subscriptionId) {\n  const rows = await supabaseGet.call(this, 'notification_dispatches?select=id&subscription_id=eq.' + encodeURIComponent(subscriptionId) + '&limit=1000');\n  return Array.isArray(rows) ? rows.length : 0;\n}\n\nlet sentRegularCount = 0;\nconst skipped = [];\nfor (const item of pendingRegular) {\n  if (!item.subscriptionId || !item.eventKey || !item.telegramChatId) {\n    skipped.push({ reason: 'item_regular_incompleto', item: item });\n    continue;\n  }\n\n  const maxNotifications = parseMaxFromZone(item.zone);\n  const dispatchCountBefore = maxNotifications ? await getDispatchCount.call(this, item.subscriptionId) : 0;\n  if (maxNotifications && dispatchCountBefore >= maxNotifications) {\n    await supabasePatch.call(this, 'notification_subscriptions?id=eq.' + encodeURIComponent(item.subscriptionId), { active: false });\n    skipped.push({ reason: 'max_notificaciones_alcanzado', subscriptionId: item.subscriptionId, stationId: item.stationId });\n    continue;\n  }\n\n  const inserted = await insertDispatch.call(this, item.subscriptionId, item.eventKey);\n  if (!Array.isArray(inserted) || !inserted.length) {\n    skipped.push({ reason: 'dispatch_regular_duplicado', subscriptionId: item.subscriptionId, stationId: item.stationId });\n    continue;\n  }\n\n  const message = 'Cargador libre ahora\\n' + item.locationName + '\\n\\nVer estado: ' + PUBLIC_BASE_URL + '/charger/' + encodeURIComponent(item.stationId);\n  await sendTelegram.call(this, item.telegramChatId, message);\n\n  const nowIso = new Date().toISOString();\n  const countAfterSend = dispatchCountBefore + 1;\n  const patch = item.notifyMode === 'first_only'\n    ? { last_notified_at: nowIso, active: false }\n    : (maxNotifications && countAfterSend >= maxNotifications\n      ? { last_notified_at: nowIso, active: false }\n      : { last_notified_at: nowIso });\n\n  await supabasePatch.call(this, 'notification_subscriptions?id=eq.' + encodeURIComponent(item.subscriptionId), patch);\n\n  sentRegularCount += 1;\n}\n\nreturn [{ json: { ok: true, sentRegularCount: sentRegularCount, skipped: skipped } }];"
+      },
+      "id": "code_regular_1",
+      "name": "Enviar regular",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        280
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Configuracion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuracion": {
+      "main": [
+        [
+          {
+            "node": "Procesar y enviar premium",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Procesar y enviar premium": {
+      "main": [
+        [
+          {
+            "node": "Espera ola regular",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Espera ola regular": {
+      "main": [
+        [
+          {
+            "node": "Enviar regular",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "versionId": "1",
+  "id": "telegram-notifications-db-workflow"
+}

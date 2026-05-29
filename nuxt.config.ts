@@ -95,7 +95,9 @@ export default defineNuxtConfig({
   routeRules: {
     '/resumen': { redirect: { to: '/', statusCode: 301 } },
     '/admin/**': {
-      robots: false,
+      headers: {
+        'x-robots-tag': 'noindex, nofollow',
+      },
     },
   },
 });

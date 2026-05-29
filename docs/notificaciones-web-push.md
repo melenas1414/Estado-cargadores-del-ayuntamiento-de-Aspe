@@ -1,145 +1,64 @@
 # Sistema de Notificaciones Web Push
 
-## Estado: ⏳ Pendiente de implementar
+## Actualizacion: Bot Telegram + notificaciones temporales
 
----
+El sistema pasa a gestionarse desde un bot de Telegram y n8n, usando Supabase como persistencia:
 
-## Objetivo
+- El bot muestra el listado de cargadores disponibles con botones inline.
+- El usuario crea y elimina suscripciones desde el propio chat.
+- El usuario puede ver su listado de notificaciones activas.
+- La prioridad se guarda en `telegram_users.is_priority`, ya no en una CSV de entorno.
+- El workflow de notificaciones envia primero a prioritarios y luego al resto con una espera inferior a 2 minutos.
 
-Enviar notificaciones push nativas al dispositivo del usuario cuando:
-- Un cargador que estaba ocupado **queda libre**
-- Una zona tiene **riesgo de saturación** (todos ocupados en breve)
-- (Futuro) Recordatorio de recarga en horario de tarifa valle
-
----
-
-## Arquitectura
+### Variables de entorno nuevas
 
 ```
-GitHub Actions scraper (cada 5 min)
-       ↓ POST /api/notifications/trigger
-   Nuxt server (web-push + VAPID keys)
-       ↓ HTTPS firmado con VAPID
-   Browser Push Server (Google FCM / Mozilla autopush)
-       ↓
-   Service Worker (sw.js) → Notificación nativa del SO
+N8N_NOTIFY_WEBHOOK_SECRET=
 ```
 
----
+### Workflows n8n implicados
 
-## Checklist de implementación
+- `scripts/n8n/telegram-subscriptions-bot-workflow.json`
+  - Gestiona `/start`, menú principal, listado de cargadores, creación y borrado de alertas, consulta de alertas activas y toggle de prioridad.
+- `scripts/n8n/telegram-notifications-db-workflow.json`
+  - Lee `charging_logs`, detecta transiciones ocupado -> libre, envía prioridad primero y después la ola regular.
 
-### 1. Preparación del proyecto
-- [ ] Instalar dependencias: `npm install web-push @vite-pwa/nuxt`
-- [ ] Generar claves VAPID una sola vez:
-  ```bash
-  npx web-push generate-vapid-keys
-  ```
-- [ ] Añadir las claves a las variables de entorno (`.env` local y secretos de Vercel/GitHub):
-  ```
-  VAPID_PUBLIC_KEY=...
-  VAPID_PRIVATE_KEY=...
-  VAPID_SUBJECT=mailto:info@onlineexpansions.com
-  ```
+### Flujo recomendado en n8n para prioridad
 
-### 2. Base de datos (Supabase)
-- [ ] Ejecutar el siguiente SQL en Supabase:
-  ```sql
-  CREATE TABLE push_subscriptions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    endpoint TEXT NOT NULL UNIQUE,
-    p256dh TEXT NOT NULL,
-    auth TEXT NOT NULL,
-    station_ids TEXT[] NOT NULL DEFAULT '{}',  -- vacío = todas las estaciones
-    quiet_hours_start INT NOT NULL DEFAULT 22, -- hora local Europe/Madrid
-    quiet_hours_end INT NOT NULL DEFAULT 8,
-    cooldown_minutes INT NOT NULL DEFAULT 30,
-    last_notified_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-  );
+Flujo nuevo recomendado (sin endpoint API de notificaciones en la app):
 
-  -- El endpoint ya es único por dispositivo+navegador (lo genera Google/Mozilla)
-  -- ON CONFLICT (endpoint) DO NOTHING en los inserts evita duplicados sin login
+1. Workflow `Iberdrola -> Supabase Aspe` inserta muestras en `charging_logs`.
+2. Al final, nodo `Disparar notificaciones n8n` llama webhook interno de n8n.
+3. Workflow `Telegram notifications from DB`:
+  - Detecta transiciones ocupado -> libre en ventana reciente.
+  - Envia primero a usuarios con `telegram_users.is_priority = true`.
+  - Espera (`regularWaveWaitSeconds`) por defecto 75s.
+  - Envia la ola regular.
+  - Registra deduplicacion en `notification_dispatches`.
+  - Desactiva automaticamente las alertas `first_only` tras el primer envio.
 
-  -- RLS: solo el service role puede leer/escribir
-  ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
-  CREATE POLICY "service_role_only" ON push_subscriptions
-    USING (auth.role() = 'service_role');
-  ```
+Cabecera requerida para el webhook interno de notificaciones:
 
-### 3. PWA / Service Worker
-- [ ] Configurar `@vite-pwa/nuxt` en `nuxt.config.ts`:
-  ```ts
-  modules: ['@vite-pwa/nuxt'],
-  pwa: {
-    registerType: 'autoUpdate',
-    manifest: {
-      name: 'Cargadores Aspe',
-      short_name: 'Cargadores',
-      theme_color: '#1a1a1a',
-      icons: [
-        { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-        { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-      ],
-    },
-    workbox: {
-      navigateFallback: '/',
-    },
-  }
-  ```
-- [ ] Crear `public/sw-push.js` (manejador del evento push):
-  ```js
-  self.addEventListener('push', (event) => {
-    const data = event.data?.json() ?? {}
-    event.waitUntil(
-      self.registration.showNotification(data.title ?? 'Cargadores Aspe', {
-        body: data.body ?? '',
-        icon: '/icon-192.png',
-        badge: '/icon-64.png',
-        data: { url: data.url ?? '/' },
-      })
-    )
-  })
+```
+x-notify-secret: <N8N_NOTIFY_WEBHOOK_SECRET>
+```
 
-  self.addEventListener('notificationclick', (event) => {
-    event.notification.close()
-    event.waitUntil(clients.openWindow(event.notification.data.url))
-  })
-  ```
+Archivos de referencia:
 
-### 4. Endpoints del servidor (Nuxt)
-- [ ] `server/api/subscriptions/subscribe.post.ts` — guarda la suscripción en Supabase usando `ON CONFLICT (endpoint) DO NOTHING` para evitar duplicados si el usuario pulsa varias veces
-- [ ] `server/api/subscriptions/unsubscribe.post.ts` — elimina la suscripción por `endpoint`
-- [ ] `server/api/notifications/trigger.post.ts` — llamado por el scraper tras insertar; compara estado anterior/actual y envía push si hay cambio relevante
+- `scripts/n8n/telegram-subscriptions-bot-workflow.json`
+- `scripts/n8n/telegram-notifications-db-workflow.json`
 
-### 5. Frontend
-- [ ] Componente `NotificationBell.vue` — botón para activar/desactivar notificaciones
-- [ ] Lógica: `requestNotificationPermission()` → `serviceWorker.subscribe()` → POST a `/api/subscriptions/subscribe`
-- [ ] Añadir el componente al header de `app.vue`
+Body minimo para el webhook interno de notificaciones:
 
-### 6. Integración con el scraper
-- [ ] Al final de `scripts/iberdrola-scraper.mjs`, tras `insertRows()`, hacer un POST a `/api/notifications/trigger` con las filas insertadas como payload
-- [ ] El endpoint compara con el estado previo en `charger_current_status` y determina qué notificaciones enviar
-
----
-
-## Reglas de negocio para el envío
-
-| Evento | Condición | Cooldown |
-|--------|-----------|----------|
-| `libre_ahora` | Estación pasa de 0 libres → ≥1 libre | 30 min por estación |
-| `riesgo_saturacion` | Municipio ≥80% ocupado | 60 min global |
-| `horario_valle` | (futuro) 22:00–08:00 si hay libres | 1 vez por noche |
-
-- No enviar durante `quiet_hours` (22:00–08:00 Europe/Madrid por defecto)
-- No enviar si `last_notified_at` < ahora - cooldown
-
----
-
-## MVP recomendado (fase 1)
-
-Implementar solo:
-1. Tabla `push_subscriptions`
+```json
+{
+  "eventKey": "libre_ahora:ESIBE22E0001001:2026-05-20T09:00:00Z",
+  "stationId": "ESIBE22E0001001",
+  "message": "Tu cargador suscrito esta disponible ahora.",
+  "url": "https://cargadores-aspe.onlineexpansions.com/charger/ESIBE22E0001001",
+  "wave": "priority"
+}
+```
 2. Service Worker básico
 3. Endpoint `/api/subscriptions/subscribe`
 4. Evento `libre_ahora` en `/api/notifications/trigger`

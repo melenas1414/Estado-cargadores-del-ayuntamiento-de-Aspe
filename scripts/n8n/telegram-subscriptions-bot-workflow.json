@@ -1,0 +1,197 @@
+{
+  "name": "Telegram Subscription Bot Aspe",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ]
+      },
+      "id": "telegram_trigger_1",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        260,
+        280
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "PLEASE_CONFIGURE",
+          "name": "Telegram Bot Aspe"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "supabase-url",
+              "name": "supabaseUrl",
+              "type": "string",
+              "value": "https://TU-PROYECTO.supabase.co"
+            },
+            {
+              "id": "supabase-key",
+              "name": "supabaseServiceRoleKey",
+              "type": "string",
+              "value": "PEGA_AQUI_TU_SERVICE_ROLE_KEY"
+            },
+            {
+              "id": "telegram-bot-token",
+              "name": "telegramBotToken",
+              "type": "string",
+              "value": "PEGA_AQUI_TU_TELEGRAM_BOT_TOKEN"
+            },
+            {
+              "id": "initial-admin-ids",
+              "name": "initialBotAdminTelegramUserIds",
+              "type": "string",
+              "value": ""
+            }
+          ]
+        },
+        "options": {
+          "includeOtherFields": true
+        }
+      },
+      "id": "config_node_1",
+      "name": "Configuracion",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        520,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json || {};\nconst trigger = $node['Telegram Trigger'] ? ($node['Telegram Trigger'].json || {}) : {};\nconst message = trigger.message || null;\nconst callbackQuery = trigger.callback_query || null;\nconst srcMessage = callbackQuery ? (callbackQuery.message || {}) : (message || {});\nconst from = callbackQuery ? (callbackQuery.from || {}) : ((message && message.from) || {});\nconst chat = srcMessage.chat || ((message && message.chat) || {});\nconst chatId = chat.id ? String(chat.id) : '';\nconst messageId = srcMessage.message_id;\nconst callbackId = callbackQuery ? callbackQuery.id : null;\nconst text = String((message && message.text) || '').trim();\nconst callbackData = String((callbackQuery && callbackQuery.data) || '').trim();\nconst command = callbackData || text || '/start';\n\nconst SUPABASE_URL = String(input.supabaseUrl || '').trim();\nconst SUPABASE_SERVICE_ROLE_KEY = String(input.supabaseServiceRoleKey || '').trim();\nconst TELEGRAM_BOT_TOKEN = String(input.telegramBotToken || '').trim();\nconst INITIAL_ADMIN_IDS = new Set(String(input.initialBotAdminTelegramUserIds || '').split(',').map(v => v.trim()).filter(Boolean));\nconst PUBLIC_BASE_URL = String(input.publicBaseUrl || 'https://cargadores-aspe.onlineexpansions.com').replace(/\\/+$/, '');\n\nconst STATIC_STATION_COORDS = {\n  ESIBE22E0001001: { lat: 38.341118679046346, lon: -0.7654778230267333 },\n  ESIBE22E0001002: { lat: 38.3476704, lon: -0.7691027 },\n  ESIBE22E0001003: { lat: 38.3498799, lon: -0.7649660 },\n  ESIBE22E0001004: { lat: 38.3430059, lon: -0.7610202 },\n  ESIBE22E0001005: { lat: 38.3385331, lon: -0.7766776 },\n  'IBERDROLA-5629': { lat: 38.3810859, lon: -0.7308562 },\n  ESIBE22E0005629: { lat: 38.3810859, lon: -0.7308562 }\n};\n\nif (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !TELEGRAM_BOT_TOKEN) throw new Error('Faltan variables en Configuracion');\nif (!chatId) return [{ json: { ok: true, ignored: true, reason: 'Sin chatId' } }];\n\nfunction supabaseHeaders(prefer) {\n  const h = { apikey: SUPABASE_SERVICE_ROLE_KEY, Authorization: 'Bearer ' + SUPABASE_SERVICE_ROLE_KEY, 'Content-Type': 'application/json' };\n  if (prefer) h.Prefer = prefer;\n  return h;\n}\n\nasync function requestText(url, options) {\n  if (typeof fetch === 'function') {\n    const r = await fetch(url, options);\n    const b = await r.text();\n    return { ok: r.ok, status: r.status, body: b };\n  }\n  const helper = this && this.helpers && this.helpers.httpRequest;\n  if (typeof helper !== 'function') throw new Error('fetch no disponible');\n  const r = await helper({ url: url, method: options.method || 'GET', headers: options.headers, body: options.body, json: false, returnFullResponse: true, ignoreHttpStatusErrors: true });\n  return { ok: r.statusCode >= 200 && r.statusCode < 300, status: r.statusCode, body: typeof r.body === 'string' ? r.body : JSON.stringify(r.body || '') };\n}\n\nasync function supabaseGet(path) {\n  const r = await requestText.call(this, SUPABASE_URL + '/rest/v1/' + path, { method: 'GET', headers: supabaseHeaders() });\n  if (!r.ok) throw new Error('Supabase GET fallo: ' + path + ' -> ' + r.status + ' ' + r.body);\n  return r.body ? JSON.parse(r.body) : [];\n}\n\nasync function supabasePost(path, payload, prefer) {\n  const r = await requestText.call(this, SUPABASE_URL + '/rest/v1/' + path, { method: 'POST', headers: supabaseHeaders(prefer), body: JSON.stringify(payload) });\n  if (!r.ok) throw new Error('Supabase POST fallo: ' + path + ' -> ' + r.status + ' ' + r.body);\n  return r.body ? JSON.parse(r.body) : [];\n}\n\nasync function supabasePatch(path, payload, prefer) {\n  const r = await requestText.call(this, SUPABASE_URL + '/rest/v1/' + path, { method: 'PATCH', headers: supabaseHeaders(prefer), body: JSON.stringify(payload) });\n  if (!r.ok) throw new Error('Supabase PATCH fallo: ' + path + ' -> ' + r.status + ' ' + r.body);\n  return r.body ? JSON.parse(r.body) : [];\n}\n\nasync function telegramApi(method, payload) {\n  const r = await requestText.call(this, 'https://api.telegram.org/bot' + TELEGRAM_BOT_TOKEN + '/' + method, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload || {}) });\n  if (!r.ok) throw new Error('Telegram API fallo en ' + method + ': ' + r.status + ' ' + r.body);\n  return r.body ? JSON.parse(r.body) : {};\n}\n\nfunction kb(rows) { return { inline_keyboard: rows }; }\n\nasync function sendOrEdit(textOut, keyboard) {\n  if (callbackQuery && messageId) {\n    try {\n      return await telegramApi.call(this, 'editMessageText', { chat_id: chatId, message_id: messageId, text: textOut, disable_web_page_preview: true, reply_markup: keyboard });\n    } catch (e) {}\n  }\n  return await telegramApi.call(this, 'sendMessage', { chat_id: chatId, text: textOut, disable_web_page_preview: true, reply_markup: keyboard });\n}\n\nasync function answer(textOut, alert) {\n  if (!callbackId) return;\n  try {\n    await telegramApi.call(this, 'answerCallbackQuery', { callback_query_id: callbackId, text: textOut || '', show_alert: Boolean(alert) });\n  } catch (e) {\n    const msg = String((e && e.message) || e || '');\n    if (msg.indexOf('query is too old and response timeout expired or query ID is invalid') !== -1) return;\n    throw e;\n  }\n}\n\nasync function upsertUser() {\n  const tgId = from.id ? String(from.id) : '';\n  const tgUser = from.username ? String(from.username) : null;\n  const existingRows = await supabaseGet.call(this, 'telegram_users?select=id,telegram_user_id,telegram_username,is_premium,is_bot_admin,is_blocked,blocked_until,anti_bot_strikes,command_window_start,command_window_count,last_command_at,is_active&telegram_user_id=eq.' + encodeURIComponent(tgId) + '&limit=1');\n  const existing = Array.isArray(existingRows) && existingRows.length ? existingRows[0] : null;\n  const isBotAdmin = Boolean((existing && existing.is_bot_admin) || INITIAL_ADMIN_IDS.has(tgId));\n  const isPremium = Boolean(existing && existing.is_premium);\n  const rows = await supabasePost.call(this, 'telegram_users?on_conflict=telegram_user_id', {\n    telegram_user_id: tgId,\n    telegram_chat_id: chatId,\n    telegram_username: tgUser,\n    is_premium: isPremium,\n    is_bot_admin: isBotAdmin,\n    is_blocked: Boolean(existing && existing.is_blocked),\n    blocked_until: existing ? (existing.blocked_until || null) : null,\n    anti_bot_strikes: Number(existing && existing.anti_bot_strikes || 0),\n    command_window_start: existing ? (existing.command_window_start || null) : null,\n    command_window_count: Number(existing && existing.command_window_count || 0),\n    last_command_at: existing ? (existing.last_command_at || null) : null,\n    is_active: true,\n    last_interaction_at: new Date().toISOString()\n  }, 'resolution=merge-duplicates,return=representation');\n  return Array.isArray(rows) && rows.length ? rows[0] : null;\n}\n\nasync function getStations() {\n  return await supabaseGet.call(this, 'charger_current_status?select=station_id,location_name,is_available,available_connectors,total_connectors&order=location_name.asc');\n}\n\nasync function getStation(stationId) {\n  const rows = await supabaseGet.call(this, 'charger_current_status?select=station_id,location_name,is_available,available_connectors,total_connectors&station_id=eq.' + encodeURIComponent(stationId) + '&limit=1');\n  return rows.length ? rows[0] : null;\n}\n\nasync function getStationCoords(stationId) {\n  try {\n    const rows = await supabaseGet.call(this, 'charger_current_status?select=station_id,latitude,longitude&station_id=eq.' + encodeURIComponent(stationId) + '&limit=1');\n    if (rows.length) {\n      const r = rows[0] || {};\n      if (Number.isFinite(Number(r.latitude)) && Number.isFinite(Number(r.longitude))) {\n        return { lat: Number(r.latitude), lon: Number(r.longitude) };\n      }\n    }\n  } catch (e) {}\n  try {\n    const rows = await supabaseGet.call(this, 'charger_current_status?select=station_id,lat,lng&station_id=eq.' + encodeURIComponent(stationId) + '&limit=1');\n    if (rows.length) {\n      const r = rows[0] || {};\n      if (Number.isFinite(Number(r.lat)) && Number.isFinite(Number(r.lng))) {\n        return { lat: Number(r.lat), lon: Number(r.lng) };\n      }\n    }\n  } catch (e) {}\n  const staticCoords = STATIC_STATION_COORDS[String(stationId || '')];\n  if (staticCoords && Number.isFinite(Number(staticCoords.lat)) && Number.isFinite(Number(staticCoords.lon))) {\n    return { lat: Number(staticCoords.lat), lon: Number(staticCoords.lon) };\n  }\n  return null;\n}\n\nasync function getSubs(userId) {\n  const nowIso = encodeURIComponent(new Date().toISOString());\n  return await supabaseGet.call(this, 'notification_subscriptions?select=id,station_id,notify_mode,zone,expires_at&user_id=eq.' + encodeURIComponent(userId) + '&active=eq.true&expires_at=gt.' + nowIso + '&order=created_at.desc');\n}\n\nasync function getUsers() {\n  return await supabaseGet.call(this, 'telegram_users?select=id,telegram_user_id,telegram_username,is_premium,is_bot_admin,is_blocked,blocked_until&order=telegram_username.asc.nullslast,telegram_user_id.asc&limit=40');\n}\n\nfunction userLabel(u) { return u.telegram_username ? ('@' + u.telegram_username) : ('ID ' + u.telegram_user_id); }\n\nfunction parseCommand(raw) {\n  const src = String(raw || '').trim();\n  return { raw: src, parts: src.split(':') };\n}\n\nfunction isHumanVerified(user) {\n  const markerMs = user && user.command_window_start ? new Date(user.command_window_start).getTime() : NaN;\n  return Number.isFinite(markerMs) && markerMs === 0;\n}\n\nfunction buildHumanChallenge(tgUserId) {\n  const seed = Math.abs(Number(String(tgUserId || '').slice(-6)) || 1) + (Date.now() % 997);\n  const a = 2 + (seed % 8);\n  const b = 1 + ((seed * 3) % 9);\n  const ok = a + b;\n  const wrong1 = ok + ((seed % 3) + 1);\n  const wrong2 = Math.max(0, ok - ((seed % 2) + 1));\n  const opts = [ok, wrong1, wrong2].sort(() => Math.random() - 0.5);\n  const rows = opts.map(v => [{ text: String(v), callback_data: 'human:sum:' + a + ':' + b + ':' + v }]);\n  rows.push([{ text: 'Cambiar reto', callback_data: 'human:sum:' + a + ':' + b + ':retry' }]);\n  return { text: 'Verificacion humana\\n\\nCuanto es ' + a + ' + ' + b + '?', keyboard: kb(rows) };\n}\n\nasync function sendHumanChallenge(reasonText) {\n  const ch = buildHumanChallenge(from && from.id ? String(from.id) : '0');\n  const fullText = reasonText ? (reasonText + '\\n\\n' + ch.text) : ch.text;\n  await sendOrEdit.call(this, fullText, ch.keyboard);\n}\n\nasync function verifyHumanAndPersist(user, cmd) {\n  if (!cmd || cmd.parts[0] !== 'human' || cmd.parts[1] !== 'sum') return false;\n  const a = Number(cmd.parts[2]);\n  const b = Number(cmd.parts[3]);\n  const rToken = String(cmd.parts[4] || '');\n  if (!Number.isFinite(a) || !Number.isFinite(b) || rToken === 'retry') return false;\n  const r = Number(rToken);\n  if (!Number.isFinite(r) || r !== (a + b)) return false;\n\n  const nowIso = new Date().toISOString();\n  await supabasePatch.call(this, 'telegram_users?id=eq.' + encodeURIComponent(user.id), {\n    anti_bot_strikes: 0,\n    is_blocked: false,\n    blocked_until: null,\n    command_window_start: '1970-01-01T00:00:00.000Z',\n    command_window_count: 0,\n    last_command_at: nowIso,\n    last_interaction_at: nowIso\n  }, 'return=minimal');\n  return true;\n}\n\n\nfunction modeLabel(notifyMode, zone) {\n  if (String(zone || '').indexOf('maxlimit:') === 0) {\n    const n = String(zone).split(':')[1] || '?';\n    return 'max ' + n + ' avisos';\n  }\n  return notifyMode === 'repeat' ? 'continuo' : 'primer aviso';\n}\n\nfunction durationLabel(hours) {\n  return String(hours) + 'h';\n}\n\nfunction remainingLabel(expiresAt) {\n  const ms = new Date(expiresAt || '').getTime() - Date.now();\n  if (!Number.isFinite(ms) || ms <= 0) return 'expirada';\n  const totalMin = Math.ceil(ms / 60000);\n  const h = Math.floor(totalMin / 60);\n  const m = totalMin % 60;\n  if (h > 0 && m > 0) return 'durante las proximas ' + h + 'h ' + m + 'min';\n  if (h > 0) return 'durante las proximas ' + h + 'h';\n  return 'durante los proximos ' + m + 'min';\n}\n\nasync function menu(user) {\n  const premiumTxt = user.is_premium ? 'Premium: activado' : 'Premium: normal';\n  const adminTxt = user.is_bot_admin ? '\\nRol: administrador del bot' : '';\n  const rows = [\n    [{ text: 'Suscribirme a un cargador', callback_data: 'sub:list' }],\n    [{ text: 'Mis notificaciones', callback_data: 'mysubs:list' }],\n    [{ text: 'Ver estado actual', callback_data: 'status:list' }]\n  ];\n  if (user.is_bot_admin) rows.push([{ text: 'Gestionar premium', callback_data: 'premium:list' }]);\n  await sendOrEdit.call(this, 'Panel del bot de cargadores de Aspe\\n\\n' + premiumTxt + adminTxt, kb(rows));\n}\n\nasync function statusList() {\n  const stations = await getStations.call(this);\n  if (!stations.length) return await sendOrEdit.call(this, 'No hay estado disponible.', kb([[{ text: 'Menú', callback_data: 'menu:main' }]]));\n  const rows = stations.map(s => [{ text: (s.is_available ? '🟢 ' : '🔴 ') + s.location_name.slice(0, 48), callback_data: 'st:d:' + s.station_id }]);\n  rows.push([{ text: 'Suscribirme', callback_data: 'sub:list' }]);\n  rows.push([{ text: 'Menú', callback_data: 'menu:main' }]);\n  await sendOrEdit.call(this, 'Estado actual: pulsa un cargador para ver detalle y actualizar.', kb(rows));\n}\n\nasync function statusDetail(stationId) {\n  const station = await getStation.call(this, stationId);\n  if (!station) return await sendOrEdit.call(this, 'No he encontrado ese cargador.', kb([[{ text: 'Estado', callback_data: 'status:list' }], [{ text: 'Menú', callback_data: 'menu:main' }]]));\n  const avail = station.is_available ? 'Libre' : 'Ocupado';\n  const c = station.available_connectors == null || station.total_connectors == null ? '' : (' (' + station.available_connectors + '/' + station.total_connectors + ')');\n  const txt = station.location_name + '\\nEstado: ' + avail + c + '\\n\\nPuedes actualizar, abrir mapa o crear alerta.';\n  await sendOrEdit.call(this, txt, kb([\n    [{ text: 'Actualizar', callback_data: 'st:r:' + station.station_id }],\n    [{ text: 'Mapa', callback_data: 'st:m:' + station.station_id }],\n    [{ text: 'Crear alerta', callback_data: 'sub:s:' + station.station_id }],\n    [{ text: 'Volver al estado', callback_data: 'status:list' }],\n    [{ text: 'Menú', callback_data: 'menu:main' }]\n  ]));\n}\n\nasync function sendStationLocation(stationId) {\n  const station = await getStation.call(this, stationId);\n  if (!station) return await sendOrEdit.call(this, 'No he encontrado ese cargador.', kb([[{ text: 'Estado', callback_data: 'status:list' }], [{ text: 'Menú', callback_data: 'menu:main' }]]));\n\n  const coords = await getStationCoords.call(this, stationId);\n  if (coords) {\n    await telegramApi.call(this, 'sendLocation', { chat_id: chatId, latitude: coords.lat, longitude: coords.lon });\n    await telegramApi.call(this, 'sendMessage', { chat_id: chatId, text: 'Identificador del cargador: ' + station.station_id + '\\nUbicacion: ' + station.location_name, disable_web_page_preview: true });\n    await answer.call(this, 'Ubicacion enviada', false);\n  } else {\n    const mapUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(station.location_name + ', Aspe');\n    await telegramApi.call(this, 'sendMessage', { chat_id: chatId, text: 'No tengo coordenadas exactas. Mapa aproximado:\\n' + mapUrl, disable_web_page_preview: false });\n  }\n\n  await statusDetail.call(this, stationId);\n}\n\nasync function subscribeList() {\n  const stations = await getStations.call(this);\n  if (!stations.length) return await sendOrEdit.call(this, 'No encuentro cargadores ahora mismo.', kb([[{ text: 'Menú', callback_data: 'menu:main' }]]));\n  const rows = stations.map(s => [{ text: s.location_name + ' · ' + (s.is_available ? 'Libre' : 'Ocupado'), callback_data: 'sub:s:' + s.station_id }]);\n  rows.push([{ text: 'Menú', callback_data: 'menu:main' }]);\n  await sendOrEdit.call(this, 'Elige un cargador para configurar tu alerta:', kb(rows));\n}\n\nasync function askDuration(stationId) {\n  await sendOrEdit.call(this, 'Duracion de la alerta:', kb([\n    [{ text: '1h', callback_data: 'sub:h:' + stationId + ':1' }, { text: '3h', callback_data: 'sub:h:' + stationId + ':3' }],\n    [{ text: '8h', callback_data: 'sub:h:' + stationId + ':8' }, { text: '24h', callback_data: 'sub:h:' + stationId + ':24' }],\n    [{ text: '72h', callback_data: 'sub:h:' + stationId + ':72' }],\n    [{ text: 'Volver', callback_data: 'sub:list' }],\n    [{ text: 'Menú', callback_data: 'menu:main' }]\n  ]));\n}\n\nasync function askMode(stationId, hoursRaw) {\n  const hours = Math.max(1, Math.min(168, Number(hoursRaw) || 24));\n  await sendOrEdit.call(this, 'Modo de notificacion para ' + durationLabel(hours) + ':', kb([\n    [{ text: 'Primer aviso', callback_data: 'sub:c:' + stationId + ':' + hours + ':first_only' }],\n    [{ text: 'Continuo', callback_data: 'sub:c:' + stationId + ':' + hours + ':repeat' }],\n    [{ text: 'Parar en 1 aviso', callback_data: 'sub:c:' + stationId + ':' + hours + ':max1' }],\n    [{ text: 'Parar en 3 avisos', callback_data: 'sub:c:' + stationId + ':' + hours + ':max3' }],\n    [{ text: 'Parar en 5 avisos', callback_data: 'sub:c:' + stationId + ':' + hours + ':max5' }],\n    [{ text: 'Volver', callback_data: 'sub:s:' + stationId }],\n    [{ text: 'Menú', callback_data: 'menu:main' }]\n  ]));\n}\n\nfunction modeFromToken(token) {\n  const t = String(token || '').trim();\n  if (t === 'first_only' || t === 'repeat') return { notifyMode: t, zone: null, label: modeLabel(t, null) };\n  if (t.indexOf('max') === 0) {\n    const n = Number(t.slice(3));\n    const max = Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;\n    return { notifyMode: 'repeat', zone: 'maxlimit:' + max, label: 'max ' + max + ' avisos' };\n  }\n  return { notifyMode: 'first_only', zone: null, label: modeLabel('first_only', null) };\n}\n\nasync function createSubscription(user, stationId, hoursRaw, modeToken) {\n  const hours = Math.max(1, Math.min(168, Number(hoursRaw) || 24));\n  const chosen = modeFromToken(modeToken);\n  const nowIsoRaw = new Date().toISOString();\n  const nowIso = encodeURIComponent(nowIsoRaw);\n  await supabasePatch.call(this, 'notification_subscriptions?user_id=eq.' + encodeURIComponent(user.id) + '&station_id=eq.' + encodeURIComponent(stationId) + '&active=eq.true&expires_at=lte.' + nowIso, { active: false }, 'return=minimal');\n  const exists = await supabaseGet.call(this, 'notification_subscriptions?select=id&user_id=eq.' + encodeURIComponent(user.id) + '&station_id=eq.' + encodeURIComponent(stationId) + '&active=eq.true&expires_at=gt.' + nowIso + '&limit=1');\n  if (exists.length) return await sendOrEdit.call(this, 'Ya tienes una alerta activa para ese cargador.', kb([[{ text: 'Mis notificaciones', callback_data: 'mysubs:list' }], [{ text: 'Menú', callback_data: 'menu:main' }]]));\n\n  const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();\n  await supabasePost.call(this, 'notification_subscriptions', {\n    user_id: user.id,\n    station_id: stationId,\n    notify_mode: chosen.notifyMode,\n    zone: chosen.zone,\n    cooldown_minutes: 30,\n    expires_at: expiresAt,\n    active: true\n  }, 'return=minimal');\n\n  const stationNow = await getStation.call(this, stationId);\n  if (stationNow && stationNow.is_available) {\n    await telegramApi.call(this, 'sendMessage', { chat_id: chatId, text: '⚡ Cargador libre ahora\\n' + stationNow.location_name + '\\n\\nVer estado: ' + PUBLIC_BASE_URL + '/charger/' + encodeURIComponent(stationId), disable_web_page_preview: true });\n  }\n\n  await sendOrEdit.call(this, 'Alerta creada: ' + stationId + '\\nDuracion: ' + durationLabel(hours) + '\\nModo: ' + chosen.label + (stationNow && stationNow.is_available ? '\\n\\n⚡ El cargador estaba libre, ya te he avisado.' : ''), kb([\n    [{ text: 'Mis notificaciones', callback_data: 'mysubs:list' }],\n    [{ text: 'Crear otra', callback_data: 'sub:list' }],\n    [{ text: 'Menú', callback_data: 'menu:main' }]\n  ]));\n}\n\nasync function mySubs(user) {\n  const subs = await getSubs.call(this, user.id);\n  if (!subs.length) return await sendOrEdit.call(this, 'No tienes alertas activas.', kb([[{ text: 'Crear alerta', callback_data: 'sub:list' }], [{ text: 'Menú', callback_data: 'menu:main' }]]));\n  const stations = await getStations.call(this);\n  const byId = new Map(stations.map(s => [s.station_id, s.location_name]));\n  const lines = ['Tus notificaciones activas:'];\n  const rows = [];\n  for (const sub of subs) {\n    const label = byId.get(sub.station_id) || sub.station_id;\n    lines.push('• ' + label + ' · ' + modeLabel(sub.notify_mode, sub.zone) + ' · ' + remainingLabel(sub.expires_at));\n    rows.push([{ text: 'Detalle ' + label.slice(0, 24), callback_data: 'st:d:' + sub.station_id }]);\n    rows.push([{ text: 'Eliminar ' + label.slice(0, 24), callback_data: 'sub:del:' + sub.id }]);\n  }\n  rows.push([{ text: 'Menú', callback_data: 'menu:main' }]);\n  await sendOrEdit.call(this, lines.join('\\n'), kb(rows));\n}\n\nasync function removeSub(user, subId) {\n  const rows = await supabasePatch.call(this, 'notification_subscriptions?id=eq.' + encodeURIComponent(subId) + '&user_id=eq.' + encodeURIComponent(user.id), { active: false }, 'return=representation');\n  if (!rows.length) return await sendOrEdit.call(this, 'No he podido eliminar esa alerta.', kb([[{ text: 'Mis notificaciones', callback_data: 'mysubs:list' }], [{ text: 'Menú', callback_data: 'menu:main' }]]));\n  await sendOrEdit.call(this, 'Alerta eliminada.', kb([[{ text: 'Mis notificaciones', callback_data: 'mysubs:list' }], [{ text: 'Menú', callback_data: 'menu:main' }]]));\n}\n\nasync function premiumList(user) {\n  if (!user.is_bot_admin) {\n    await answer.call(this, 'Solo un administrador puede gestionar premium.', true);\n    return await menu.call(this, user);\n  }\n  const users = await getUsers.call(this);\n  const lines = ['Gestionar premium:'];\n  const rows = [];\n  for (const u of users) {\n    const marker = u.is_premium ? 'SI' : 'NO';\n    const blocked = u.is_blocked ? ' · bloqueado' : '';\n    lines.push(marker + ' ' + userLabel(u) + (u.is_bot_admin ? ' · admin' : '') + blocked);\n    rows.push([{ text: (u.is_premium ? 'Quitar premium a ' : 'Dar premium a ') + userLabel(u).slice(0, 18), callback_data: 'premium:toggle:' + u.id }]);\n  }\n  rows.push([{ text: 'Menú', callback_data: 'menu:main' }]);\n  await sendOrEdit.call(this, lines.join('\\n'), kb(rows));\n}\n\nasync function premiumToggle(actor, targetId) {\n  if (!actor.is_bot_admin) {\n    await answer.call(this, 'Solo un administrador puede gestionar premium.', true);\n    return await menu.call(this, actor);\n  }\n  const rows = await supabaseGet.call(this, 'telegram_users?select=id,is_premium&id=eq.' + encodeURIComponent(targetId) + '&limit=1');\n  const target = rows.length ? rows[0] : null;\n  if (!target) return await sendOrEdit.call(this, 'No he encontrado ese usuario.', kb([[{ text: 'Gestionar premium', callback_data: 'premium:list' }], [{ text: 'Menú', callback_data: 'menu:main' }]]));\n  await supabasePatch.call(this, 'telegram_users?id=eq.' + encodeURIComponent(target.id), { is_premium: !target.is_premium }, 'return=minimal');\n  await premiumList.call(this, actor);\n}\n\nconst user = await upsertUser.call(this);\nif (!user) throw new Error('No se pudo crear o recuperar el usuario');\n\nlet cmd = parseCommand(command);\nif (!isHumanVerified(user)) {\n  if (cmd.parts[0] === 'human' && cmd.parts[1] === 'sum') {\n    const ok = await verifyHumanAndPersist.call(this, user, cmd);\n    if (!ok) {\n      if (callbackId) await answer.call(this, 'Respuesta incorrecta', true);\n      await sendHumanChallenge.call(this, 'Respuesta incorrecta. Intentalo de nuevo.');\n      return [{ json: { ok: true, humanVerified: false, handledCommand: command, chatId: chatId, telegramUserId: from.id ? String(from.id) : null } }];\n    }\n    if (callbackId) await answer.call(this, 'Verificacion correcta', false);\n    user.anti_bot_strikes = 0;\n    user.command_window_start = '1970-01-01T00:00:00.000Z';\n    user.last_command_at = new Date().toISOString();\n    cmd = parseCommand('/menu');\n  } else {\n    await sendHumanChallenge.call(this, 'Antes de usar el bot, resuelve esta suma.');\n    return [{ json: { ok: true, humanVerified: false, handledCommand: command, chatId: chatId, telegramUserId: from.id ? String(from.id) : null } }];\n  }\n}\n\nconst currentUser = user;\nif (callbackId) await answer.call(this, 'Procesando', false);\n\nif (cmd.raw === '/start' || cmd.raw === '/menu' || cmd.raw === 'menu:main') {\n  await menu.call(this, currentUser);\n} else if (cmd.raw === 'status:list') {\n  await statusList.call(this);\n} else if (cmd.parts[0] === 'st' && cmd.parts[1] === 'd' && cmd.parts[2]) {\n  await statusDetail.call(this, cmd.parts[2]);\n} else if (cmd.parts[0] === 'st' && cmd.parts[1] === 'r' && cmd.parts[2]) {\n  await statusDetail.call(this, cmd.parts[2]);\n} else if (cmd.parts[0] === 'st' && cmd.parts[1] === 'm' && cmd.parts[2]) {\n  await sendStationLocation.call(this, cmd.parts[2]);\n} else if (cmd.raw === 'sub:list' || cmd.raw === 'subscribe:list') {\n  await subscribeList.call(this);\n} else if (cmd.parts[0] === 'sub' && cmd.parts[1] === 's' && cmd.parts[2]) {\n  await askDuration.call(this, cmd.parts[2]);\n} else if (cmd.parts[0] === 'sub' && cmd.parts[1] === 'h' && cmd.parts[2] && cmd.parts[3]) {\n  await askMode.call(this, cmd.parts[2], cmd.parts[3]);\n} else if (cmd.parts[0] === 'sub' && cmd.parts[1] === 'c' && cmd.parts[2] && cmd.parts[3] && cmd.parts[4]) {\n  await createSubscription.call(this, currentUser, cmd.parts[2], cmd.parts[3], cmd.parts[4]);\n} else if (cmd.raw === 'mysubs:list') {\n  await mySubs.call(this, currentUser);\n} else if (cmd.parts[0] === 'sub' && cmd.parts[1] === 'del' && cmd.parts[2]) {\n  await removeSub.call(this, currentUser, cmd.parts[2]);\n} else if (cmd.raw === 'premium:list') {\n  await premiumList.call(this, currentUser);\n} else if (cmd.parts[0] === 'premium' && cmd.parts[1] === 'toggle' && cmd.parts[2]) {\n  await premiumToggle.call(this, currentUser, cmd.parts[2]);\n} else {\n  await menu.call(this, currentUser);\n}\n\nreturn [{ json: { ok: true, handledCommand: command, chatId: chatId, telegramUserId: from.id ? String(from.id) : null } }];"
+      },
+      "id": "code_manage_1",
+      "name": "Gestionar bot y suscripciones",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        280
+      ]
+    },
+    {
+      "id": "command_classifier_1",
+      "name": "Clasificar comando",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        280
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json || {};\nconst trigger = $node['Telegram Trigger'] ? ($node['Telegram Trigger'].json || {}) : {};\nconst message = trigger.message || null;\nconst callbackQuery = trigger.callback_query || null;\nconst text = String((message && message.text) || '').trim();\nconst callbackData = String((callbackQuery && callbackQuery.data) || '').trim();\nconst command = callbackData || text || '/start';\nconst commandCategory = command.indexOf('premium:') === 0 ? 'premium' : 'navigation';\nreturn [{ json: Object.assign({}, input, { command: command, commandCategory: commandCategory }) }];"
+      }
+    },
+    {
+      "id": "route_premium_1",
+      "name": "Ruta premium",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        190
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json || {};\nif (input.commandCategory !== 'premium') return [];\nreturn [{ json: input }];"
+      }
+    },
+    {
+      "id": "route_navigation_1",
+      "name": "Ruta navegación",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        430
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const input = $input.first().json || {};\nif (input.commandCategory !== 'navigation') return [];\nreturn [{ json: input }];"
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Configuracion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuracion": {
+      "main": [
+        [
+          {
+            "node": "Clasificar comando",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clasificar comando": {
+      "main": [
+        [
+          {
+            "node": "Ruta premium",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ruta navegación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ruta premium": {
+      "main": [
+        [
+          {
+            "node": "Gestionar bot y suscripciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ruta navegación": {
+      "main": [
+        [
+          {
+            "node": "Gestionar bot y suscripciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "versionId": "2",
+  "id": "telegram-subscriptions-bot-workflow"
+}
