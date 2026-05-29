@@ -1,20 +1,20 @@
 // n8n Code node (Run once for all items)
-// Required env vars in n8n:
-// - SUPABASE_URL
-// - SUPABASE_SERVICE_ROLE_KEY
-// Optional:
-// - SCRAPER_MODE: incremental | full
-// - IBERDROLA_LANGUAGE: es | en
-// - SCRAPER_STATION_IDS: CSV con station_id objetivo
-// - IBERDROLA_BBOX_LAT_MAX, IBERDROLA_BBOX_LAT_MIN, IBERDROLA_BBOX_LON_MAX, IBERDROLA_BBOX_LON_MIN
-// - IBERDROLA_DAILY_BBOX_LAT_MAX, IBERDROLA_DAILY_BBOX_LAT_MIN, IBERDROLA_DAILY_BBOX_LON_MAX, IBERDROLA_DAILY_BBOX_LON_MIN
+// Configuracion esperada en el item de entrada (nodo Set/Configuracion):
+// - supabaseUrl
+// - supabaseServiceRoleKey
+// Opcional:
+// - scraperMode: incremental | full
+// - iberdrolaLanguage: es | en
+// - scraperStationIds: CSV con station_id objetivo
+// - incrementalLatMax, incrementalLatMin, incrementalLonMax, incrementalLonMin
+// - fullLatMax, fullLatMin, fullLonMax, fullLonMin
 
 const inputConfig = $input.first()?.json || {};
 
-const SUPABASE_URL = inputConfig.supabaseUrl || $env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = inputConfig.supabaseServiceRoleKey || $env.SUPABASE_SERVICE_ROLE_KEY;
-const SCRAPER_MODE = String(inputConfig.scraperMode || $env.SCRAPER_MODE || 'incremental').toLowerCase();
-const IBERDROLA_LANGUAGE = String(inputConfig.iberdrolaLanguage || $env.IBERDROLA_LANGUAGE || 'es');
+const SUPABASE_URL = String(inputConfig.supabaseUrl || '').trim();
+const SUPABASE_SERVICE_ROLE_KEY = String(inputConfig.supabaseServiceRoleKey || '').trim();
+const SCRAPER_MODE = String(inputConfig.scraperMode || 'incremental').toLowerCase();
+const IBERDROLA_LANGUAGE = String(inputConfig.iberdrolaLanguage || 'es');
 
 function parseCsvList(value) {
   if (!value) return [];
@@ -25,11 +25,11 @@ function parseCsvList(value) {
 }
 
 const SCRAPER_STATION_IDS = new Set(
-  parseCsvList(inputConfig.scraperStationIds || $env.SCRAPER_STATION_IDS),
+  parseCsvList(inputConfig.scraperStationIds),
 );
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error('Faltan SUPABASE_URL y/o SUPABASE_SERVICE_ROLE_KEY en n8n');
+  throw new Error('Faltan supabaseUrl y/o supabaseServiceRoleKey en Configuracion');
 }
 
 const IBERDROLA_BASE_URL =
@@ -88,17 +88,17 @@ const KNOWN_STATIONS_BY_CP = new Map(
 );
 
 const BBOX_INCREMENTAL = {
-  latitudeMax: Number(inputConfig.incrementalLatMax ?? $env.IBERDROLA_BBOX_LAT_MAX ?? '38.41'),
-  latitudeMin: Number(inputConfig.incrementalLatMin ?? $env.IBERDROLA_BBOX_LAT_MIN ?? '38.325'),
-  longitudeMax: Number(inputConfig.incrementalLonMax ?? $env.IBERDROLA_BBOX_LON_MAX ?? '-0.72'),
-  longitudeMin: Number(inputConfig.incrementalLonMin ?? $env.IBERDROLA_BBOX_LON_MIN ?? '-0.805'),
+  latitudeMax: Number(inputConfig.incrementalLatMax ?? '38.41'),
+  latitudeMin: Number(inputConfig.incrementalLatMin ?? '38.325'),
+  longitudeMax: Number(inputConfig.incrementalLonMax ?? '-0.72'),
+  longitudeMin: Number(inputConfig.incrementalLonMin ?? '-0.805'),
 };
 
 const BBOX_DAILY_FULL = {
-  latitudeMax: Number(inputConfig.fullLatMax ?? $env.IBERDROLA_DAILY_BBOX_LAT_MAX ?? '38.62'),
-  latitudeMin: Number(inputConfig.fullLatMin ?? $env.IBERDROLA_DAILY_BBOX_LAT_MIN ?? '38.12'),
-  longitudeMax: Number(inputConfig.fullLonMax ?? $env.IBERDROLA_DAILY_BBOX_LON_MAX ?? '-0.42'),
-  longitudeMin: Number(inputConfig.fullLonMin ?? $env.IBERDROLA_DAILY_BBOX_LON_MIN ?? '-1.02'),
+  latitudeMax: Number(inputConfig.fullLatMax ?? '38.62'),
+  latitudeMin: Number(inputConfig.fullLatMin ?? '38.12'),
+  longitudeMax: Number(inputConfig.fullLonMax ?? '-0.42'),
+  longitudeMin: Number(inputConfig.fullLonMin ?? '-1.02'),
 };
 
 function normalizeText(value) {
