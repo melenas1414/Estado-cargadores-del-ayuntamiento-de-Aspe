@@ -1,210 +1,213 @@
 # Estado de Cargadores EV - Ayuntamiento de Aspe
 
-Aplicacion web para monitorizar en tiempo casi real la disponibilidad de cargadores municipales en Aspe, con analitica historica, prediccion y diagnostico.
+Aplicacion web para monitorizar en tiempo casi real la disponibilidad de cargadores municipales en Aspe, con analitica historica, prediccion, diagnostico operativo y recomendaciones de expansion.
 
-<p align="center">
-  <a href="https://cargadores-aspe.onlineexpansions.com/"><img src="https://img.shields.io/badge/website-cargadores--aspe.onlineexpansions.com-0969da?style=flat-square&logo=googlechrome&logoColor=white&labelColor=555" alt="Website"></a>
-  <a href="https://cargadores-aspe.onlineexpansions.com/"><img src="https://img.shields.io/badge/status-en%20produccion-2da44e?style=flat-square&logo=vercel&logoColor=white&labelColor=555" alt="Produccion"></a>
-  <a href="https://github.com/melenas1414/Estado-cargadores-del-ayuntamiento-de-Aspe"><img src="https://img.shields.io/badge/github-repositorio-181717?style=flat-square&logo=github&logoColor=white&labelColor=555" alt="Repositorio"></a>
-</p>
+## Enlaces
 
-<p align="center">
-  <img src="https://img.shields.io/badge/nuxt-3.x-00DC82?style=flat-square&logo=nuxtdotjs&logoColor=white&labelColor=555" alt="Nuxt 3">
-  <img src="https://img.shields.io/badge/vue-3.x-42b883?style=flat-square&logo=vuedotjs&logoColor=white&labelColor=555" alt="Vue 3">
-  <img src="https://img.shields.io/badge/supabase-postgresql-3ecf8e?style=flat-square&logo=supabase&logoColor=white&labelColor=555" alt="Supabase">
-  <img src="https://img.shields.io/badge/tailwind-css-06b6d4?style=flat-square&logo=tailwindcss&logoColor=white&labelColor=555" alt="Tailwind CSS">
-  <img src="https://img.shields.io/badge/license-MIT-a10f0f?style=flat-square&logo=opensourceinitiative&logoColor=white&labelColor=555" alt="MIT">
-</p>
-
-<p align="center">
-  <a href="#5-puesta-en-marcha-desde-cero"><img src="https://img.shields.io/badge/setup-desde%20cero-1f6feb?style=flat-square&logo=readthedocs&logoColor=white&labelColor=555" alt="Setup"></a>
-  <a href="#6-variables-de-entorno"><img src="https://img.shields.io/badge/env-variables-8250df?style=flat-square&logo=dotenv&logoColor=white&labelColor=555" alt="Variables"></a>
-  <a href="#7-github-actions"><img src="https://img.shields.io/badge/ci-github%20actions-0969da?style=flat-square&logo=githubactions&logoColor=white&labelColor=555" alt="Actions"></a>
-  <a href="#9-cookies-y-google-analytics"><img src="https://img.shields.io/badge/cookies-consent%20mode-b62324?style=flat-square&logo=googleanalytics&logoColor=white&labelColor=555" alt="Consent"></a>
-</p>
-
-## Vista de ejemplo
+- Produccion: https://cargadores-aspe.onlineexpansions.com/
+- Repositorio: https://github.com/melenas1414/Estado-cargadores-del-ayuntamiento-de-Aspe
 
 ![Dashboard de cargadores de Aspe](public/dashboard.png)
 
-## 1) Tecnologia
+## Tabla de contenidos
 
-| Capa | Tecnologia | Uso |
+- [Resumen funcional](#resumen-funcional)
+- [Stack tecnico](#stack-tecnico)
+- [Arquitectura y flujo de datos](#arquitectura-y-flujo-de-datos)
+- [Rutas y SEO](#rutas-y-seo)
+- [API disponible](#api-disponible)
+- [Estructura del proyecto](#estructura-del-proyecto)
+- [Puesta en marcha local](#puesta-en-marcha-local)
+- [Variables de entorno](#variables-de-entorno)
+- [Automatizacion y despliegue](#automatizacion-y-despliegue)
+- [Notificaciones por Telegram (n8n)](#notificaciones-por-telegram-n8n)
+- [Scripts npm](#scripts-npm)
+- [Troubleshooting](#troubleshooting)
+- [Roadmap tecnico](#roadmap-tecnico)
+- [Autor](#autor)
+- [Licencia](#licencia)
+
+## Resumen funcional
+
+El dashboard incluye:
+
+- Estado actual por cargador (libre, ocupado, parcial).
+- Prediccion de liberacion por estacion con nivel de confianza.
+- ETA estimada de disponibilidad.
+- Duracion media, mediana y p90 de ocupacion.
+- Heatmaps por hora y por dia de la semana.
+- Salud por cargador (uptime, desconexiones, tiempo offline).
+- Deteccion de anomalias y recomendaciones automaticas.
+- Diagnostico de saturacion y calidad de datos.
+- Ranking operativo y vista de expansion.
+
+## Stack tecnico
+
+| Capa | Tecnologia | Uso principal |
 |---|---|---|
-| Frontend SSR | Nuxt 3 + Vue 3 | Renderizado, rutas y UI del dashboard |
-| Estilos | Tailwind CSS | Sistema visual y componentes |
-| Backend app | Nitro (server/api) | Endpoints de estado, heatmap, prediccion y diagnostico |
-| Base de datos | Supabase (PostgreSQL) | Persistencia de lecturas y consultas analiticas |
-| Automatizacion de ingesta | GitHub Actions + Node.js | Ejecucion del scraper de Iberdrola |
-| Deploy | GitHub Actions + Vercel | Build y despliegue de produccion |
-| Analitica web | Google Analytics 4 + Consent Mode avanzado | Medicion bajo consentimiento |
+| Frontend SSR | Nuxt 3, Vue 3, TypeScript | Dashboard, rutas, SEO y renderizado |
+| UI | Tailwind CSS, Lucide, Leaflet, Chart.js | Visualizaciones, mapa y componentes |
+| Backend | Nitro (server/api) | Endpoints de estado y analitica |
+| Datos | Supabase (PostgreSQL) | Historico, consultas y persistencia |
+| Ingesta | Node.js + scraper Iberdrola | Captura periodica de estado de cargadores |
+| Orquestacion | GitHub Actions | Scraper automatizado y despliegue |
+| Deploy | Vercel | Hosting de la app y runtime server |
+| Medicion | Google Analytics 4 | Eventos con consentimiento |
 
-## 2) Cuentas necesarias y como crearlas
-
-GitHub se usa para ejecutar las actualizaciones automaticas mediante GitHub Actions.
-
-### Cuenta de Supabase
-
-Se necesita para la base de datos y acceso API.
-
-1. Crear cuenta en https://supabase.com/.
-2. Crear proyecto nuevo.
-3. Obtener en Settings > API:
-   - Project URL
-   - anon key
-   - service_role key
-
-### Cuenta de Vercel
-
-Se necesita para el hosting del frontend.
-
-1. Crear cuenta en https://vercel.com/.
-2. Crear/importar proyecto.
-3. Obtener:
-   - VERCEL_TOKEN (Account Settings > Tokens)
-   - VERCEL_ORG_ID
-   - VERCEL_PROJECT_ID
-
-### Cuenta de Google Analytics (opcional, recomendada)
-
-Se necesita para analitica del panel.
-
-1. Crear propiedad en Google Analytics 4.
-2. Crear flujo Web.
-3. Copiar Measurement ID (formato G-XXXXXXX).
-
-## 3) Funcionalidad principal
-
-- Estado actual por punto de carga (libre/ocupado/parcial).
-- Prediccion avanzada con fallback por historico global y nivel de confianza.
-- ETA estimada de liberacion por cargador.
-- Duracion media de ocupacion (media, mediana y p90).
-- Heatmap de ocupacion por dia/hora.
-- Analitica historica por hora y por dia de semana.
-- Salud y fiabilidad por cargador (uptime, desconexiones y tiempo offline).
-- Deteccion de anomalias e insights automaticos.
-- Ranking operativo de cargadores.
-- Diagnostico operativo de saturacion y calidad de datos.
-- Navegacion por rutas SEO: /, /mapa, /inteligencia, /diagnostico.
-- Landings SEO locales y ficha por cargador (/charger/:id).
-- Banner de cookies propio con consentimiento granular para GA4.
-
-## Novedades recientes
-
-Resumen de los ultimos cambios aplicados al producto:
-
-- Prediccion reforzada:
-  - Fallback progresivo weekday -> global -> sin datos.
-  - Exposicion de confianza y metodo de prediccion en API.
-  - Selector de fechas disponibles basado en calidad real del historico.
-
-- Inteligencia ampliada en dashboard:
-  - Integracion de ETA de liberacion y duracion de ocupacion.
-  - Nuevas visualizaciones de ocupacion por hora y por dia.
-  - Bloques de salud de cargadores, ranking e insights.
-
-- Nuevos endpoints de analitica:
-  - /api/analytics/occupation-duration
-  - /api/analytics/estimated-release
-  - /api/analytics/charger-health
-  - /api/analytics/occupancy-by-hour
-  - /api/analytics/occupancy-by-day
-  - /api/analytics/anomalies
-  - /api/analytics/recommendations
-  - /api/analytics/rankings
-
-- SEO y contenido:
-  - Nuevas landings: /cargar-coche-electrico-aspe, /cargadores-gratis-aspe, /mejores-puntos-recarga-alicante, /mapa-ev-aspe-tiempo-real.
-  - Nueva ficha de cargador: /charger/:id.
-  - Sitemap de paginas ampliado para incluir rutas nuevas.
-  - Ruta /resumen mantenida con redireccion 301 hacia /.
-
-- Estado de alertas:
-  - Todo el modulo de alertas se ha retirado del proyecto por decision funcional actual.
-  - No hay pagina, endpoints ni referencias activas de alertas en el codigo.
-
-## 4) Flujo funcional
+## Arquitectura y flujo de datos
 
 ```mermaid
 flowchart LR
-  A[Workflow Iberdrola Monitor] --> B[Scraper Node.js]
-  B --> C[Supabase charging_logs]
-  C --> D[API server/api/*]
-  D --> E[Dashboard Nuxt]
-  E --> F[Usuario final]
-  F --> G[Consentimiento cookies]
-  G --> H[Google Analytics 4]
+  A[GitHub Actions Iberdrola Monitor] --> B[scripts/iberdrola-scraper.mjs]
+  B --> C[Supabase: charging_logs]
+  C --> D[server/api/chargers/current]
+  C --> E[server/api/analytics/*]
+  D --> F[Frontend Nuxt]
+  E --> F
+  F --> G[Usuario]
+  G --> H[Consentimiento cookies]
+  H --> I[Google Analytics 4]
 ```
 
-## 5) Puesta en marcha desde cero
+## Rutas y SEO
 
-### Paso 1: Clonar e instalar
+Rutas principales del dashboard:
+
+- /
+- /mapa
+- /inteligencia
+- /diagnostico
+- /expansion
+
+Landings SEO:
+
+- /cargar-coche-electrico-aspe
+- /cargadores-gratis-aspe
+- /mejores-puntos-recarga-alicante
+- /mapa-ev-aspe-tiempo-real
+
+Rutas especiales:
+
+- /charger/[id] para ficha de cargador.
+- /admin/insights marcada como noindex,nofollow.
+- /resumen redirecciona con 301 a /.
+
+Sitemaps servidos por backend:
+
+- /sitemap.xml
+- /sitemap-pages.xml
+
+## API disponible
+
+### Estado actual
+
+- GET /api/chargers/current
+
+### Analitica
+
+- GET /api/analytics/prediction
+- GET /api/analytics/eta
+- GET /api/analytics/estimated-release
+- GET /api/analytics/occupation-duration
+- GET /api/analytics/occupancy-by-hour
+- GET /api/analytics/occupancy-by-day
+- GET /api/analytics/heatmap
+- GET /api/analytics/charger-health
+- GET /api/analytics/metrics
+- GET /api/analytics/diagnostic
+- GET /api/analytics/anomalies
+- GET /api/analytics/recommendations
+- GET /api/analytics/rankings
+- GET /api/analytics/expansion-recommendations
+
+## Estructura del proyecto
+
+```text
+app/
+  components/
+  composables/
+  pages/
+  plugins/
+server/
+  api/
+    analytics/
+    chargers/
+  routes/
+scripts/
+  iberdrola-scraper.mjs
+  n8n/
+supabase/
+  schema.sql
+  analytics.sql
+  timescaledb.sql
+  schema/
+docs/
+.github/workflows/
+```
+
+## Puesta en marcha local
+
+### 1) Instalar dependencias
 
 ```bash
-git clone https://github.com/melenas1414/Estado-cargadores-del-ayuntamiento-de-Aspe.git
-cd Estado-cargadores-del-ayuntamiento-de-Aspe
 npm install
 ```
 
-### Paso 2: Inicializar Supabase con todos los SQL
+### 2) Configurar entorno
 
-Ejecuta estos scripts en el SQL Editor de Supabase en este orden:
+```bash
+cp .env.example .env
+```
+
+### 3) Inicializar base de datos (Supabase SQL Editor)
+
+Orden recomendado:
 
 1. supabase/schema.sql
 2. supabase/timescaledb.sql
 3. supabase/analytics.sql
 4. supabase/add-data-quality.sql
 5. supabase/cleanup-null-rows.sql
+6. supabase/schema/10_charging_logs.sql
+7. supabase/schema/20_telegram.sql
 
-### Paso 3: Configurar entorno local
-
-```bash
-cp .env.example .env
-```
-
-Rellena los valores obligatorios de la seccion Variables de entorno.
-
-### Paso 4: Ejecutar en local
+### 4) Ejecutar en desarrollo
 
 ```bash
 npm run dev
 ```
 
-Aplicacion local: http://localhost:3000
-
-### Paso 5: Build de produccion local (opcional)
+### 5) Probar build local
 
 ```bash
 npm run build
 npm run preview
 ```
 
-## 6) Variables de entorno
+## Variables de entorno
 
-### Variables de app (Nuxt)
-
-| Variable | Obligatoria | Ambito | Descripcion |
-|---|---|---|---|
-| NUXT_PUBLIC_SUPABASE_URL | Si | Cliente/Servidor | URL publica del proyecto Supabase |
-| NUXT_PUBLIC_SUPABASE_KEY | Si | Cliente/Servidor | Clave anon de Supabase |
-| NUXT_PUBLIC_SITE_URL | Si | Cliente/Servidor | URL publica canonica |
-| NUXT_PUBLIC_GA_ID | Recomendado | Cliente/Servidor | Measurement ID GA4 |
-| SUPABASE_SERVICE_KEY | Si | Servidor | service_role para endpoints server-side |
-| IBERDROLA_API_URL | No | Servidor | Reserva para integracion privada |
-| IBERDROLA_API_KEY | No | Servidor | Reserva para integracion privada |
-| CHARGERS_VISIBLE_STATION_IDS | No | Servidor | Lista CSV de station_id visibles en la API de estado actual |
-
-### Variables del scraper
+Variables principales de la app:
 
 | Variable | Obligatoria | Descripcion |
 |---|---|---|
-| SUPABASE_URL | Si | URL de Supabase usada por el scraper |
-| SUPABASE_SERVICE_ROLE_KEY | Si | service_role key para escritura |
+| NUXT_PUBLIC_SUPABASE_URL | Si | URL publica del proyecto Supabase |
+| NUXT_PUBLIC_SUPABASE_KEY | Si | Clave anon publica de Supabase |
+| SUPABASE_SERVICE_KEY | Si | Clave service_role para el backend |
+| NUXT_PUBLIC_SITE_URL | Recomendado | URL canonica del sitio |
+| NUXT_PUBLIC_GA_ID | Opcional | Measurement ID de GA4 |
+| CHARGERS_VISIBLE_STATION_IDS | Opcional | CSV de estaciones visibles en la app |
+
+Variables del scraper:
+
+| Variable | Obligatoria | Descripcion |
+|---|---|---|
+| SUPABASE_URL | Si | URL de Supabase para escritura del scraper |
+| SUPABASE_SERVICE_ROLE_KEY | Si | service_role usada por el scraper |
 | SCRAPER_MODE | No | incremental o full |
-| IBERDROLA_LANGUAGE | No | Idioma, por defecto es |
-| SCRAPER_PROXY_URL | No | Proxy HTTP/HTTPS |
-| SCRAPER_DEBUG_RESPONSES | No | Logging extendido (1/true) |
-| SCRAPER_STATION_IDS | No | Lista CSV de station_id objetivo a ingerir |
+| SCRAPER_STATION_IDS | No | CSV de estaciones objetivo |
+| SCRAPER_PROXY_URL | No | Proxy para peticiones salientes |
+| SCRAPER_DEBUG_RESPONSES | No | Debug extendido de respuestas |
+| IBERDROLA_LANGUAGE | No | Idioma de peticiones (default: es) |
 | IBERDROLA_BBOX_LAT_MAX | No | Bounding box incremental |
 | IBERDROLA_BBOX_LAT_MIN | No | Bounding box incremental |
 | IBERDROLA_BBOX_LON_MAX | No | Bounding box incremental |
@@ -214,136 +217,96 @@ npm run preview
 | IBERDROLA_DAILY_BBOX_LON_MAX | No | Bounding box full diario |
 | IBERDROLA_DAILY_BBOX_LON_MIN | No | Bounding box full diario |
 
-## 7) GitHub Actions
+Variables para integraciones adicionales:
 
-El proyecto usa estos workflows:
+| Variable | Obligatoria | Descripcion |
+|---|---|---|
+| IBERDROLA_API_URL | No | Endpoint privado Iberdrola (si aplica) |
+| IBERDROLA_API_KEY | No | Credencial privada Iberdrola (si aplica) |
+| N8N_NOTIFY_WEBHOOK_SECRET | Opcional | Secreto para webhook interno de notificaciones |
+
+## Automatizacion y despliegue
+
+Workflows:
 
 - .github/workflows/iberdrola-monitor.yml
 - .github/workflows/deploy.yml
 
-### Iberdrola Monitor
+Iberdrola monitor:
 
-- Incremental: cada 10 minutos (7,17,27,37,47,57).
-- Full diario: 02:15 UTC.
-- Manual: workflow_dispatch con mode incremental o full.
+- Modo incremental cada 10 minutos, en minutos 7,17,27,37,47,57.
+- Modo full diario a las 02:15 UTC.
+- Ejecucion manual con workflow_dispatch.
 
-Secrets requeridos:
+Secrets para monitor:
 
-| Secreto | Obligatorio |
-|---|---|
-| SUPABASE_URL | Si |
-| SUPABASE_SERVICE_ROLE_KEY | Si |
-| SCRAPER_PROXY_URL | No |
-| SCRAPER_STATION_IDS | No |
+- SUPABASE_URL
+- SUPABASE_SERVICE_ROLE_KEY
+- SCRAPER_PROXY_URL (opcional)
+- SCRAPER_STATION_IDS (opcional)
 
-### Deploy
+Deploy Vercel:
 
-El deploy se lanza en push a master/main solo si cambian rutas desplegables configuradas en .github/workflows/deploy.yml.
+- Trigger por push a main/master en cambios desplegables.
+- Runtime Node.js 22 configurado durante el pipeline.
 
-Secrets requeridos:
+Secrets para deploy:
 
-| Secreto | Obligatorio |
-|---|---|
-| VERCEL_TOKEN | Si |
-| VERCEL_ORG_ID | Si |
-| VERCEL_PROJECT_ID | Si |
+- VERCEL_TOKEN
+- VERCEL_ORG_ID
+- VERCEL_PROJECT_ID
 
-## 8) Configuracion en Vercel
+## Notificaciones por Telegram (n8n)
 
-Configura en Vercel (Production y Preview cuando aplique):
+El flujo de notificaciones se apoya en n8n y Supabase:
 
-- NUXT_PUBLIC_SUPABASE_URL
-- NUXT_PUBLIC_SUPABASE_KEY
-- NUXT_PUBLIC_SITE_URL
-- NUXT_PUBLIC_GA_ID
-- SUPABASE_SERVICE_KEY
-- IBERDROLA_API_URL (si se usa)
-- IBERDROLA_API_KEY (si se usa)
-- CHARGERS_VISIBLE_STATION_IDS (si quieres limitar/combinar estaciones por ciudad)
+- scripts/n8n/telegram-subscriptions-bot-workflow.json
+- scripts/n8n/telegram-notifications-db-workflow.json
+- scripts/n8n/iberdrola-supabase-workflow.json
 
-### Configuracion por ciudad o dominio
+Resumen operativo:
 
-Puedes reutilizar la misma base de datos para distintos dominios (por ejemplo, uno por ciudad) y decidir por entorno que cargadores entran y cuales se muestran.
+- Se detectan transiciones ocupado -> libre en charging_logs.
+- Se envia primero a usuarios prioritarios.
+- Tras una espera breve se envia la ola regular.
+- Se registra deduplicacion en notification_dispatches.
 
-Ejemplo para incluir Aspe + Monforte (ID 5629):
+## Scripts npm
 
-```bash
-CHARGERS_VISIBLE_STATION_IDS=ESIBE22E0001001,ESIBE22E0001002,ESIBE22E0001003,ESIBE22E0001004,ESIBE22E0001005,IBERDROLA-5629
-SCRAPER_STATION_IDS=ESIBE22E0001001,ESIBE22E0001002,ESIBE22E0001003,ESIBE22E0001004,ESIBE22E0001005,IBERDROLA-5629
-```
-
-## 9) Cookies y Google Analytics
-
-- Banner de consentimiento propio.
-- Consent Mode avanzado.
-- Consentimiento por defecto denegado para ad_storage, ad_user_data, ad_personalization y analytics_storage.
-- Actualizacion de consentimiento a granted o denied segun accion del usuario.
-- Eventos solo cuando hay consentimiento aceptado.
-
-## 10) Cargadores monitorizados
-
-| Station ID | Ubicacion |
-|---|---|
-| ESIBE22E0001001 | Av. Carlos Soria, 11, Aspe |
-| ESIBE22E0001002 | Av. Constitucion 42, Aspe |
-| ESIBE22E0001003 | Av. Padre Ismael 34, Aspe |
-| ESIBE22E0001004 | Av. Juan Carlos I 36, Aspe |
-| ESIBE22E0001005 | Calle Orihuela 100, Aspe |
-
-## 11) Estructura del proyecto
-
-```text
-app/
-  app.vue
-  components/
-  composables/
-  pages/
-  plugins/
-server/
-  api/
-  routes/
-scripts/
-  iberdrola-scraper.mjs
-supabase/
-  schema.sql
-  timescaledb.sql
-  analytics.sql
-  add-data-quality.sql
-  cleanup-null-rows.sql
-.github/workflows/
-  deploy.yml
-  iberdrola-monitor.yml
-public/
-  dashboard.png
-```
-
-## 12) Scripts npm
-
-| Comando | Descripcion |
+| Script | Descripcion |
 |---|---|
 | npm run dev | Desarrollo local |
 | npm run build | Build de produccion |
-| npm run preview | Preview de build |
-| npm run generate | Generacion estatico |
+| npm run preview | Preview del build |
+| npm run generate | Generacion estatica |
+| npm run postinstall | Nuxt prepare |
 
-## 13) Troubleshooting rapido
+## Troubleshooting
 
-### Google Analytics no registra
+### El scraper falla
 
-1. Verifica NUXT_PUBLIC_GA_ID en Vercel.
+1. Revisa SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY.
+2. Activa SCRAPER_DEBUG_RESPONSES=1 para ver respuestas.
+3. Si hay bloqueo remoto, prueba SCRAPER_PROXY_URL.
+
+### No hay despliegue tras push
+
+1. Comprueba si tus cambios entran en paths monitorizados por deploy.yml.
+2. Verifica VERCEL_TOKEN, VERCEL_ORG_ID y VERCEL_PROJECT_ID.
+
+### GA4 no registra eventos
+
+1. Verifica NUXT_PUBLIC_GA_ID.
 2. Acepta cookies en el banner.
-3. Comprueba en DevTools que existe gtag/js?id=...
-4. Revisa bloqueo por adblockers.
+3. Comprueba en DevTools la carga de gtag.
 
-### No se despliega tras push
+## Roadmap tecnico
 
-Revisa si el cambio afecta rutas incluidas en filtros de .github/workflows/deploy.yml.
+Referencia de evolucion del producto:
 
-### Falla el scraper
-
-1. Revisar SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY.
-2. Probar con SCRAPER_PROXY_URL si hay bloqueo.
-3. Lanzar workflow_dispatch en modo full.
+- docs/plan-desarrollo.md
+- docs/tesla-analytics.md
+- docs/notificaciones-web-push.md
 
 ## Autor
 
@@ -351,6 +314,7 @@ Revisa si el cambio afecta rutas incluidas en filtros de .github/workflows/deplo
 - Email: santiagogalan13@gmail.com
 - GitHub: https://github.com/melenas1414
 - LinkedIn: https://linkedin.com/in/santiago-galan-tapias
+- Twitter: https://twitter.com/melenas1414
 - Web: https://onlineexpansions.com
 
 ## Licencia
