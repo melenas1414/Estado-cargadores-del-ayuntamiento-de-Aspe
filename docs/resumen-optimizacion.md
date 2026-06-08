@@ -1,0 +1,7 @@
+- El sistema ya compila sin errores (`npm run build` exitoso con código 0).
+- Se crearon las funciones SQL optimizadas de agregación en `supabase/views-optimized.sql` para transferir el procesamiento pesado a Postgres, bajando radicalmente el egress habitual.
+- Los endpoints de la API (`heatmap`, `recommendations`, `prediction`, `metrics`, `rankings`, `eta`) fueron completamente reescritos para usar las RPCs creadas, eliminando la descarga de datos brutos a Vercel.
+- Opciones de periodos largos y descontrolados (`all`) fueron capadas a un máximo de 14/30 días.
+- Se configuró el tiempo de caché de Vercel (10 minutos) para todos los endpoints de análisis en `nuxt.config.ts`.
+- Se optimizó el script de polling en el frontend (aumentado de 5 a 15 minutos en `index.vue`).
+- Se validaron todos los archivos tocados por duplicidad o fallos de parseo, asegurando un build limpio para CI/CD de GitHub Actions.
