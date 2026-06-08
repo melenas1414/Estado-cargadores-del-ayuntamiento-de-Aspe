@@ -37,78 +37,131 @@ export default defineCachedEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: `fn_availability_by_day_hour: ${error.message}` });
   }
 
-  const aggRows = (data ?? []) as AggRow[];
-  if (!aggRows.length) return { recommendations: [] };
+  const rawRows = Array.isArray(data) ? data : [];
+  if (rawRows.length === 0) {
+    return { recommendations: [] };
+  }
 
   // Reconstruir byHour y byDayHour desde datos ya agregados
   const byHour = Array.from({ length: 24 }, () => ({ sum: 0, n: 0 }));
   const byDayHour = new Map<string, { sum: number; n: number }>();
 
-  for (const row of aggRows) {
-    const disp = Number(row.avg_disponibilidad);
-    const n = row.sample_count;
+  for (const row of rawRows) {
+    if (!row || typeof row !== 'object') continue;
 
-    // Media ponderada: sum = avg * n, n = count → sum/n = weighted avg
-    byHour[row.hour_of_day].sum += disp * n;
-    byHour[row.hour_of_day].n += n;
+    const r = row as Partial<AggRow>;
+    const dayOfWeek = r.day_of_week;
+    const hourOfDay = r.hour_of_day;
+    const avgDisp = r.avg_disponibilidad;
+    const sampleCount = r.sample_count;
 
-    const key = `${row.day_of_week}-${row.hour_of_day}`;
-    if (!byDayHour.has(key)) byDayHour.set(key, { sum: 0, n: 0 });
-    const item = byDayHour.get(key)!;
+    if (
+      dayOfWeek === undefined || dayOfWeek === null ||
+      hourOfDay === undefined || hourOfDay === null ||
+      avgDisp === undefined || avgDisp === null ||
+      sampleCount === undefined || sampleCount === null
+    ) {
+      continue;
+    }
+
+    const disp = Number(avgDisp);
+    const n = Number(sampleCount);
+
+    // Acceso seguro a byHour
+    const hourSlot = byHour[hourOfDay];
+    if (hourSlot !== undefined && hourSlot !== null) {
+      hourSlot.sum += disp * n;
+      hourSlot.n += n;
+    }
+
+    const key = `${dayOfWeek}-${hourOfDay}`;
+    let item = byDayHour.get(key);
+    if (item === undefined) {
+      item = { sum: 0, n: 0 };
+      byDayHour.set(key, item);
+    }
     item.sum += disp * n;
     item.n += n;
   }
 
   const mejoresHoras = byHour
-    .map((x, hour) => ({ hour, score: x.n ? x.sum / x.n : 0, n: x.n }))
+    .map((x, hour) => {
+      const sumValue = x.sum;
+      const nCount = x.n;
+      const score = nCount > 0 ? sumValue / nCount : 0;
+      return { hour, score, n: nCount };
+    })
     .filter((x) => x.n > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 3);
 
-  const mejorFranjaDia = Array.from(byDayHour.entries())
+  const franjasMapeadas = Array.from(byDayHour.entries())
     .map(([key, value]) => {
-      const [day, hour] = key.split('-').map(Number);
-      return { day, hour, score: value.n ? value.sum / value.n : 0, n: value.n };
+      const parts = key.split('-').map(Number);
+      const day = parts[0] !== undefined ? parts[0] : 0;
+      const hour = parts[1] !== undefined ? parts[1] : 0;
+      const sumValue = value.sum;
+      const nCount = value.n;
+      const score = nCount > 0 ? sumValue / nCount : 0;
+      return { day, hour, score, n: nCount };
     })
     .filter((x) => x.n >= 4)
-    .sort((a, b) => b.score - a.score)[0] ?? null;
+    .sort((a, b) => b.score - a.score);
+
+  const mejorFranjaDia = franjasMapeadas.length > 0 ? franjasMapeadas[0] : null;
 
   const now = new Date();
   const nowDay = now.getDay();
   const nowHour = now.getHours();
   const keyNow = `${nowDay}-${nowHour}`;
   const slotNow = byDayHour.get(keyNow);
-  const scoreNow = slotNow && slotNow.n ? slotNow.sum / slotNow.n : null;
-  const scoreHourBase = byHour[nowHour].n ? byHour[nowHour].sum / byHour[nowHour].n : null;
+  
+  const scoreNow = (slotNow !== undefined && slotNow !== null && slotNow.n > 0)
+    ? slotNow.sum / slotNow.n
+    : null;
+
+  const hourSlotNow = byHour[nowHour];
+  const scoreHourBase = (hourSlotNow !== undefined && hourSlotNow !== null && hourSlotNow.n > 0)
+    ? hourSlotNow.sum / hourSlotNow.n
+    : null;
 
   const recommendations: Array<{ text: string; confidence: 'alta' | 'media' | 'baja' }> = [];
 
-  if (mejorFranjaDia) {
-    const pct = Math.round(mejorFranjaDia.score * 100);
-    recommendations.push({
-      text: `Los ${DIAS_ES[mejorFranjaDia.day]} sobre las ${fmtHora(mejorFranjaDia.hour)} suele haber una disponibilidad del ${pct}%.`,
-      confidence: mejorFranjaDia.n >= 20 ? 'alta' : 'media',
-    });
+  if (mejorFranjaDia !== null && mejorFranjaDia !== undefined) {
+    const dayIndex = mejorFranjaDia.day;
+    const dayName = DIAS_ES[dayIndex];
+    if (dayName !== undefined && dayName !== null) {
+      const pct = Math.round(mejorFranjaDia.score * 100);
+      const confidenceLevel = mejorFranjaDia.n >= 20 ? ('alta' as const) : ('media' as const);
+      recommendations.push({
+        text: `Los ${dayName} sobre las ${fmtHora(mejorFranjaDia.hour)} suele haber una disponibilidad del ${pct}%.`,
+        confidence: confidenceLevel,
+      });
+    }
   }
 
-  if (mejoresHoras.length >= 2) {
-    const inicio = mejoresHoras[0].hour;
-    const fin = (mejoresHoras[1].hour + 1) % 24;
-    const pct = Math.round(((mejoresHoras[0].score + mejoresHoras[1].score) / 2) * 100);
+  const m0 = mejoresHoras[0];
+  const m1 = mejoresHoras[1];
+  if (m0 !== undefined && m0 !== null && m1 !== undefined && m1 !== null) {
+    const inicio = m0.hour;
+    const fin = (m1.hour + 1) % 24;
+    const pct = Math.round(((m0.score + m1.score) / 2) * 100);
+    const confidenceLevel = Math.min(m0.n, m1.n) >= 20 ? ('alta' as const) : ('media' as const);
     recommendations.push({
       text: `Mejor ventana general para cargar: entre ${fmtHora(inicio)} y ${fmtHora(fin)} (${pct}% de disponibilidad estimada).`,
-      confidence: Math.min(mejoresHoras[0].n, mejoresHoras[1].n) >= 20 ? 'alta' : 'media',
+      confidence: confidenceLevel,
     });
   }
 
-  if (scoreNow !== null && scoreHourBase !== null) {
+  if (scoreNow !== null && scoreHourBase !== null && slotNow !== undefined && slotNow !== null) {
     const diff = Math.round((scoreNow - scoreHourBase) * 100);
     if (Math.abs(diff) >= 10) {
+      const confidenceLevel = slotNow.n >= 12 ? ('media' as const) : ('baja' as const);
       recommendations.push({
         text: diff > 0
           ? `Ahora hay más disponibilidad de lo normal para esta hora (+${diff} puntos).`
           : `Ahora hay más ocupación de lo normal para esta hora (${diff} puntos).`,
-        confidence: slotNow && slotNow.n >= 12 ? 'media' : 'baja',
+        confidence: confidenceLevel,
       });
     }
   }
@@ -117,94 +170,5 @@ export default defineCachedEventHandler(async (event) => {
 }, {
   name: 'analytics-recommendations',
   maxAge: 600,
-  swr: true,
-});
-
-  const byHour = Array.from({ length: 24 }, () => ({ sum: 0, n: 0 }));
-  const byDayHour = new Map<string, { sum: number; n: number }>();
-
-  for (const row of rows) {
-    const date = new Date(row.created_at);
-    const day = date.getDay();
-    const hour = date.getHours();
-    const disp = disponibilidad(row);
-
-    byHour[hour].sum += disp;
-    byHour[hour].n += 1;
-
-    const key = `${day}-${hour}`;
-    if (!byDayHour.has(key)) byDayHour.set(key, { sum: 0, n: 0 });
-    const item = byDayHour.get(key)!;
-    item.sum += disp;
-    item.n += 1;
-  }
-
-  const mejoresHoras = byHour
-    .map((x, hour) => ({
-      hour,
-      score: x.n ? x.sum / x.n : 0,
-      n: x.n,
-    }))
-    .filter((x) => x.n > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3);
-
-  const mejorFranjaDia = Array.from(byDayHour.entries())
-    .map(([key, value]) => {
-      const [day, hour] = key.split('-').map(Number);
-      return {
-        day,
-        hour,
-        score: value.n ? value.sum / value.n : 0,
-        n: value.n,
-      };
-    })
-    .filter((x) => x.n >= 4)
-    .sort((a, b) => b.score - a.score)[0] ?? null;
-
-  const now = new Date();
-  const nowDay = now.getDay();
-  const nowHour = now.getHours();
-  const keyNow = `${nowDay}-${nowHour}`;
-  const slotNow = byDayHour.get(keyNow);
-  const scoreNow = slotNow && slotNow.n ? slotNow.sum / slotNow.n : null;
-  const scoreHourBase = byHour[nowHour].n ? byHour[nowHour].sum / byHour[nowHour].n : null;
-
-  const recommendations: Array<{ text: string; confidence: 'alta' | 'media' | 'baja' }> = [];
-
-  if (mejorFranjaDia) {
-    const pct = Math.round(mejorFranjaDia.score * 100);
-    recommendations.push({
-      text: `Los ${DIAS_ES[mejorFranjaDia.day]} sobre las ${fmtHora(mejorFranjaDia.hour)} suele haber una disponibilidad del ${pct}%.`,
-      confidence: mejorFranjaDia.n >= 20 ? 'alta' : 'media',
-    });
-  }
-
-  if (mejoresHoras.length >= 2) {
-    const inicio = mejoresHoras[0].hour;
-    const fin = (mejoresHoras[1].hour + 1) % 24;
-    const pct = Math.round(((mejoresHoras[0].score + mejoresHoras[1].score) / 2) * 100);
-    recommendations.push({
-      text: `Mejor ventana general para cargar: entre ${fmtHora(inicio)} y ${fmtHora(fin)} (${pct}% de disponibilidad estimada).`,
-      confidence: Math.min(mejoresHoras[0].n, mejoresHoras[1].n) >= 20 ? 'alta' : 'media',
-    });
-  }
-
-  if (scoreNow !== null && scoreHourBase !== null) {
-    const diff = Math.round((scoreNow - scoreHourBase) * 100);
-    if (Math.abs(diff) >= 10) {
-      recommendations.push({
-        text: diff > 0
-          ? `Ahora hay más disponibilidad de lo normal para esta hora (+${diff} puntos).`
-          : `Ahora hay más ocupación de lo normal para esta hora (${diff} puntos).`,
-        confidence: slotNow && slotNow.n >= 12 ? 'media' : 'baja',
-      });
-    }
-  }
-
-  return { recommendations: recommendations.slice(0, 5) };
-}, {
-  name: 'analytics-recommendations',
-  maxAge: 3600,
   swr: true,
 });
