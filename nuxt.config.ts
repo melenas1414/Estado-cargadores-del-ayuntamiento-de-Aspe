@@ -97,31 +97,26 @@ export default defineNuxtConfig({
     '/admin/**': {
       headers: {
         'x-robots-tag': 'noindex, nofollow',
-
-        // ─── Caché de respuestas de la API en Vercel Edge ────────────────────────
-        // Los analytics se cachean 10 min en Vercel: si múltiples usuarios cargan
-        // la página al mismo tiempo, solo UNA petición llega a Supabase.
-        // /api/chargers/current se cachea solo 15s porque muestra el estado en vivo.
-        nitro: {
-          routeRules: {
-            '/api/chargers/current':                  { cache: { maxAge: 15,  swr: true } },
-            '/api/analytics/heatmap':                 { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/recommendations':         { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/prediction':              { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/eta':                     { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/metrics':                 { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/rankings':                { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/charger-health':          { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/anomalies':               { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/diagnostic':              { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/occupation-duration':     { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/occupancy-by-hour':       { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/occupancy-by-day':        { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/estimated-release':       { cache: { maxAge: 600, swr: true } },
-            '/api/analytics/expansion-recommendations': { cache: { maxAge: 600, swr: true } },
-          },
-        },
       },
     },
+    // ─── Caché de respuestas de la API en Vercel Edge ────────────────────────
+    // Los analytics se cachean 10 min en Vercel: si múltiples usuarios cargan
+    // la página al mismo tiempo, solo UNA petición llega a Supabase.
+    // /api/chargers/current se cachea solo 15s porque muestra el estado en vivo.
+    '/api/chargers/current':                  { cache: { maxAge: 15,  swr: true } },
+    '/api/analytics/heatmap':                 { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/recommendations':         { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/prediction':              { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/eta':                     { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/metrics':                 { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/rankings':                { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/charger-health':          { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/anomalies':               { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/diagnostic':              { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/occupation-duration':     { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/occupancy-by-hour':       { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/occupancy-by-day':        { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/estimated-release':       { cache: { maxAge: 600, swr: true } },
+    '/api/analytics/expansion-recommendations': { cache: { maxAge: 600, swr: true } },
   },
 });
