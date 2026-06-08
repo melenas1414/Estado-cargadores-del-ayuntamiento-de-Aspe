@@ -268,7 +268,6 @@ const {
   refresh: refrescarDuracionOcupacion,
 } = useFetch('/api/analytics/occupation-duration', {
   query: computed(() => ({
-    dias_historico: periodo.value === 'today' ? 7 : (periodo.value === '7d' ? 30 : (periodo.value === '30d' ? 90 : 180)),
     dias_historico: periodo.value === 'today' ? 7 : 14,
   })),
   watch: [periodo],
