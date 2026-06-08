@@ -26,7 +26,7 @@ function parseStationId(raw: unknown): string | null {
 }
 
 function parsePeriodo(raw: unknown): number | null {
-  const periodo = String(raw ?? '30d');
+  const periodo = String(raw ?? '14d');
   if (!Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)) return 30;
   return DIAS_POR_PERIODO[periodo];
 }

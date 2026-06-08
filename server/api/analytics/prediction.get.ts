@@ -1,29 +1,77 @@
 /**
  * GET /api/analytics/prediction
  *
- * Analiza la ventana histórica completa y calcula la mejor hora agregada
- * por hora del día (00-23), con estrategia robusta de fallback.
- * 
- * ESTRATEGIA (en orden):
- * 1. Predicción por día semana (si hay ≥2 días históricos o ≥24 muestras)
- * 2. Fallback global (si hay ≥48 muestras totales)
- * 3. Horas "sugeridas" con lógica inteligente (basada en patrones típicos EV)
+ * Usa RPCs fn_availability_by_day_hour() + fn_days_with_data()
+ * para agregar en PostgreSQL. Devuelve ~168 + 7 = 175 filas
+ * en vez de 26.900+ filas crudas (56 días antes → 14 días ahora).
  */
 import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
 import { defineCachedEventHandler } from 'nitropack/runtime';
 
 const DIAS_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-const VENTANA_HISTORICA_DIAS = 56;
+const VENTANA_HISTORICA_DIAS = 14; // Reducido de 56 → ahorro ~75 % de egress
 
-// Umbrales más permisivos
-const MIN_DIAS_CON_DATOS_WEEKDAY = 2;      // Mínimo 2 días del mismo día de la semana
-const MIN_MUESTRAS_WEEKDAY = 24;            // Mínimo 24 muestras (1 día de datos cada hora)
-const MIN_MUESTRAS_FALLBACK_GLOBAL = 24;   // Mínimo 24 muestras globales para fallback
-const MIN_MUESTRAS_SUGERENCIA = 1;          // Modo best-guess: ≥1 muestra válida
+const MIN_DIAS_CON_DATOS_WEEKDAY = 2;
+const MIN_MUESTRAS_WEEKDAY = 24;
+const MIN_MUESTRAS_FALLBACK_GLOBAL = 24;
 
 type NivelConfianza = 'alta' | 'media' | 'baja';
 type MetodoPrediccion = 'weekday' | 'global' | 'sin_datos';
+
+type AggRow = {
+  day_of_week: number;
+  hour_of_day: number;
+  avg_disponibilidad: number;
+  sample_count: number;
+};
+
+type DaysRow = {
+  day_of_week: number;
+  distinct_days: number;
+  total_samples: number;
+};
+
+function toISODate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function parseDiasHaciaFuturo(raw: unknown): number {
+  const n = Number(raw ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(30, Math.trunc(n)));
+}
+
+function parseStationId(raw: unknown): string | null {
+  const stationId = String(raw ?? '').trim();
+  if (!stationId || stationId === 'all') return null;
+  return stationId;
+}
+
+function confianzaDesdeMuestras(muestras: number): NivelConfianza {
+  if (muestras >= 240) return 'alta';
+  if (muestras >= 72) return 'media';
+  return 'baja';
+}
+
+const HORAS_SUGERIDAS_POR_DEFECTO = [8, 9, 13, 18];
+
+function mejorHoraConDesempate(
+  franjas: Array<{ hora: number; disponibilidad: number; conDatos: boolean; muestras: number }>
+): { hora: number; disponibilidad: number; conDatos: boolean; muestras: number } {
+  if (!franjas.length) return { hora: 9, disponibilidad: 0, conDatos: false, muestras: 0 };
+  const sorted = [...franjas].sort((a, b) => b.disponibilidad - a.disponibilidad);
+  const maxDisp = sorted[0].disponibilidad;
+  const mejores = sorted.filter((f) => f.disponibilidad === maxDisp);
+  if (mejores.length > 1) {
+    const razonables = mejores.filter((f) => f.hora >= 6 && f.hora <= 22);
+    if (razonables.length > 0) {
+      const sugeridas = razonables.filter((f) => HORAS_SUGERIDAS_POR_DEFECTO.includes(f.hora));
+      return sugeridas.length ? sugeridas[0] : razonables[0];
+    }
+  }
+  return mejores[0];
+}
 
 function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -91,34 +139,6 @@ function mejorHoraConDesempate(
   return mejoresCandidatos[0];
 }
 
-// Función auxiliar para paginar y traer todos los datos
-async function fetchAllRows(supabase: any, baseQuery: any, pageSize: number = 1000): Promise<any[]> {
-  let allRows: any[] = [];
-  let offset = 0;
-  let hasMore = true;
-  
-  while (hasMore) {
-    const { data, error } = await baseQuery.range(offset, offset + pageSize - 1);
-    
-    if (error) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: `Error al obtener datos: ${error.message}`,
-      });
-    }
-    
-    const rows = (data ?? []) as any[];
-    allRows = allRows.concat(rows);
-    
-    if (rows.length < pageSize) {
-      hasMore = false;
-    } else {
-      offset += pageSize;
-    }
-  }
-  
-  return allRows;
-}
 
 export default defineCachedEventHandler(async (event) => {
   const supabase = await serverSupabaseClient(event);
@@ -128,135 +148,116 @@ export default defineCachedEventHandler(async (event) => {
 
   const ahora = new Date();
   const fechaObjetivo = new Date(ahora.getTime() + diasHaciaFuturo * 24 * 60 * 60 * 1000);
-  const diaObjetivo = fechaObjetivo.getDay(); // 0 = Dom … 6 = Sáb
-  const haceVentana = new Date(ahora.getTime() - VENTANA_HISTORICA_DIAS * 24 * 60 * 60 * 1000);
+  const diaObjetivo = fechaObjetivo.getDay();
 
-  // Construir query con paginación
-  const buildQuery = () => {
-    let q = supabase
-      .from('charging_logs')
-      .select('created_at, is_available, available_connectors')
-      .gte('created_at', haceVentana.toISOString())
-      .order('created_at', { ascending: true });
+  // ── Dos RPCs pequeñas en paralelo: máx 168 + 7 = 175 filas ──────────────
+  // (antes: ~26.900 filas crudas con fetchAllRows sobre 56 días)
+  const [aggResult, daysResult] = await Promise.all([
+    supabase.rpc('fn_availability_by_day_hour', {
+      p_dias: VENTANA_HISTORICA_DIAS,
+      p_station_id: stationId,
+    }),
+    supabase.rpc('fn_days_with_data', {
+      p_dias: VENTANA_HISTORICA_DIAS,
+      p_station_id: stationId,
+    }),
+  ]);
 
-    if (stationId) {
-      q = q.eq('station_id', stationId);
-    }
+  if (aggResult.error) {
+    throw createError({ statusCode: 500, statusMessage: `fn_availability_by_day_hour: ${aggResult.error.message}` });
+  }
+  if (daysResult.error) {
+    throw createError({ statusCode: 500, statusMessage: `fn_days_with_data: ${daysResult.error.message}` });
+  }
 
-    return q;
-  };
+  const aggRows = (aggResult.data ?? []) as AggRow[];
+  const daysRows = (daysResult.data ?? []) as DaysRow[];
 
-  const data = await fetchAllRows(supabase, buildQuery());
-
-  // ─── Agrupar por hora para día objetivo y fallback global ────────────────
-  const porHoraWeekday: Record<number, { total: number; disponibles: number }> = {};
-  const porHoraGlobal: Record<number, { total: number; disponibles: number }> = {};
-  const diasHistoricosConDatosSet = new Set<string>();
-  const diasConDatosPorDiaSemana: Array<Set<string>> = Array.from({ length: 7 }, () => new Set<string>());
-  const muestrasPorDiaSemana = Array.from({ length: 7 }, () => 0);
+  // Indexar días con datos por día de semana
+  const diasConDatosPorDiaSemana: number[] = Array(7).fill(0);
+  const muestrasPorDiaSemana: number[] = Array(7).fill(0);
   let muestrasGlobales = 0;
+  let diasHistoricosConDatos = 0;
 
+  for (const dr of daysRows) {
+    diasConDatosPorDiaSemana[dr.day_of_week] = dr.distinct_days;
+    muestrasPorDiaSemana[dr.day_of_week] = dr.total_samples;
+    muestrasGlobales += dr.total_samples;
+    diasHistoricosConDatos += dr.distinct_days;
+  }
+
+  // ─── Construir franjas por hora para el día objetivo y global ────────────
+  const porHoraWeekday: Record<number, { total: number; disponibles: number }> = {};
+  const porHoraGlobal:  Record<number, { total: number; disponibles: number }> = {};
   for (let h = 0; h < 24; h++) {
     porHoraWeekday[h] = { total: 0, disponibles: 0 };
-    porHoraGlobal[h] = { total: 0, disponibles: 0 };
+    porHoraGlobal[h]  = { total: 0, disponibles: 0 };
   }
 
-  for (const fila of data ?? []) {
-    const fecha = new Date(fila.created_at);
-    const diaSemana = fecha.getUTCDay();
-    const hora = fecha.getUTCHours();
+  for (const row of aggRows) {
+    const disp = Number(row.avg_disponibilidad);
+    const n    = row.sample_count;
+    const h    = row.hour_of_day;
+    const dow  = row.day_of_week;
 
-    diasHistoricosConDatosSet.add(toISODate(fecha));
-    diasConDatosPorDiaSemana[diaSemana].add(toISODate(fecha));
-    muestrasPorDiaSemana[diaSemana]++;
-    muestrasGlobales++;
+    // Ponderado: total += n, disponibles += disp*n
+    porHoraGlobal[h].total      += n;
+    porHoraGlobal[h].disponibles += Math.round(disp * n);
 
-    // Lógica de disponibilidad: preferir available_connectors, fallback a is_available
-    const disponible = typeof fila.available_connectors === 'number' 
-      ? fila.available_connectors > 0 
-      : fila.is_available;
-
-    porHoraGlobal[hora].total++;
-    if (disponible) porHoraGlobal[hora].disponibles++;
-
-    if (diaSemana !== diaObjetivo) continue;
-
-    porHoraWeekday[hora].total++;
-    if (disponible) porHoraWeekday[hora].disponibles++;
+    if (dow === diaObjetivo) {
+      porHoraWeekday[h].total      += n;
+      porHoraWeekday[h].disponibles += Math.round(disp * n);
+    }
   }
 
-  // ─── Calcular disponibilidad (%) por hora ──────────────────────────────
   const franjasWeekday = Array.from({ length: 24 }, (_, h) => {
     const { total, disponibles } = porHoraWeekday[h];
-    return {
-      hora:           h,
-      disponibilidad: total > 0 ? Math.round((disponibles / total) * 100) : 0,
-      conDatos:       total > 0,
-      muestras:       total,
-    };
+    return { hora: h, disponibilidad: total > 0 ? Math.round((disponibles / total) * 100) : 0, conDatos: total > 0, muestras: total };
   });
 
   const franjasGlobal = Array.from({ length: 24 }, (_, h) => {
     const { total, disponibles } = porHoraGlobal[h];
-    return {
-      hora:           h,
-      disponibilidad: total > 0 ? Math.round((disponibles / total) * 100) : 0,
-      conDatos:       total > 0,
-      muestras:       total,
-    };
+    return { hora: h, disponibilidad: total > 0 ? Math.round((disponibles / total) * 100) : 0, conDatos: total > 0, muestras: total };
   });
 
-  // ─── Elegir la mejor hora con estrategia robusta de fallback ─────────────────
   const franjasWeekdayConDatos = franjasWeekday.filter((f) => f.conDatos);
-  const franjasGlobalConDatos = franjasGlobal.filter((f) => f.conDatos);
-  const diasHistoricosConDatos = diasHistoricosConDatosSet.size;
-  const diasConDatos = diasConDatosPorDiaSemana[diaObjetivo].size;
+  const franjasGlobalConDatos  = franjasGlobal.filter((f)  => f.conDatos);
+  const diasConDatos           = diasConDatosPorDiaSemana[diaObjetivo];
   const muestrasTotalesWeekday = franjasWeekdayConDatos.reduce((acc, f) => acc + f.muestras, 0);
 
-  // ESTRATEGIA 1: Predicción por día de semana (más confiable)
   const haySuficientesDatosWeekday =
     franjasWeekdayConDatos.length > 0 &&
     (diasConDatos >= MIN_DIAS_CON_DATOS_WEEKDAY || muestrasTotalesWeekday >= MIN_MUESTRAS_WEEKDAY);
 
-  // ESTRATEGIA 2: Fallback global (cuando no hay datos específicos del día)
   const hayDatosFallbackGlobal =
-    franjasGlobalConDatos.length > 0 &&
-    muestrasGlobales >= MIN_MUESTRAS_FALLBACK_GLOBAL;
+    franjasGlobalConDatos.length > 0 && muestrasGlobales >= MIN_MUESTRAS_FALLBACK_GLOBAL;
 
-  // Elegir el mejor método disponible
   let metodoPrediccion: MetodoPrediccion;
-  let franjas: Array<{ hora: number; disponibilidad: number; conDatos: boolean; muestras: number }>;
-  let franjasConDatos: Array<{ hora: number; disponibilidad: number; conDatos: boolean; muestras: number }>;
+  let franjas: typeof franjasWeekday;
+  let franjasConDatos: typeof franjasWeekdayConDatos;
   let haySuficientesDatos: boolean;
 
   if (haySuficientesDatosWeekday) {
-    // MÉTODO 1: Usar predicción específica del día de la semana
     metodoPrediccion = 'weekday';
     franjas = franjasWeekday;
     franjasConDatos = franjasWeekdayConDatos;
     haySuficientesDatos = true;
   } else if (hayDatosFallbackGlobal) {
-    // MÉTODO 2: Fallback a datos globales
     metodoPrediccion = 'global';
     franjas = franjasGlobal;
     franjasConDatos = franjasGlobalConDatos;
     haySuficientesDatos = true;
   } else {
-    // MÉTODO 3: Modo best-guess (sugerir horas típicas sin datos históricos)
     metodoPrediccion = 'sin_datos';
-    franjas = franjasWeekday;  // Retornar franjas vacías para mostrar gráfico vacío
+    franjas = franjasWeekday;
     franjasConDatos = [];
     haySuficientesDatos = false;
   }
 
-  // Calcular la mejor hora con desempate inteligente
   const mejorFranja = haySuficientesDatos
     ? mejorHoraConDesempate(franjasConDatos)
     : mejorHoraConDesempate(HORAS_SUGERIDAS_POR_DEFECTO.map((h) => ({
-        hora: h,
-        disponibilidad: 50,  // Disponibilidad neutral
-        conDatos: false,
-        muestras: 0,
+        hora: h, disponibilidad: 50, conDatos: false, muestras: 0,
       })));
 
   const confianza: NivelConfianza = metodoPrediccion === 'sin_datos'
@@ -265,32 +266,23 @@ export default defineCachedEventHandler(async (event) => {
       ? (muestrasGlobales >= 120 ? 'media' : 'baja')
       : confianzaDesdeMuestras(muestrasTotalesWeekday));
 
-  // ─── Horas recomendables (disponibilidad ≥ 70 %) ────────────────────────
-  const horasRecomendadas = haySuficientesDatos
-    ? franjasConDatos
-      .filter((f) => f.disponibilidad >= 70)
-      .map((f) => f.hora)
-      .sort((a, b) => a - b)
-    : [];
-
   const fallbackGlobalCercanoDisponible =
     muestrasGlobales >= MIN_MUESTRAS_FALLBACK_GLOBAL || diasHistoricosConDatos >= MIN_DIAS_CON_DATOS_WEEKDAY;
 
   const diasDisponibles = Array.from({ length: 31 }, (_, dias) => {
     const fecha = new Date(ahora.getTime() + dias * 24 * 60 * 60 * 1000);
     const diaSemana = fecha.getDay();
-    const diasConDatosDia = diasConDatosPorDiaSemana[diaSemana].size;
+    const diasConDatosDia = diasConDatosPorDiaSemana[diaSemana];
     const muestrasDia = muestrasPorDiaSemana[diaSemana];
-    
-    // Criterios más permisivos para disponibilidad
+
     const disponibleWeekday = diasConDatosDia >= MIN_DIAS_CON_DATOS_WEEKDAY || muestrasDia >= MIN_MUESTRAS_WEEKDAY;
     const disponibleFallbackCercano = fallbackGlobalCercanoDisponible && dias <= 7;
-    const disponibleBestGuess = dias <= 14;  // Ofrecer predicción best-guess para próximas 2 semanas
+    const disponibleBestGuess = dias <= 14;
     const disponible = disponibleWeekday || disponibleFallbackCercano || disponibleBestGuess;
-    
+
     const confianzaFecha: NivelConfianza = disponibleWeekday
       ? confianzaDesdeMuestras(muestrasDia)
-      : (disponibleFallbackCercano ? 'baja' : 'baja');
+      : 'baja';
 
     return {
       dias,
@@ -310,7 +302,7 @@ export default defineCachedEventHandler(async (event) => {
     diaSemana: DIAS_ES[diaObjetivo],
     fechaObjetivo: toISODate(fechaObjetivo),
     diasHaciaFuturo,
-    franjas,  // Siempre devolver franjas (vacías o con datos)
+    franjas,
     horasRecomendadas: franjasConDatos.length > 0
       ? franjasConDatos.filter((f) => f.disponibilidad >= 70).map((f) => f.hora).sort((a, b) => a - b)
       : HORAS_SUGERIDAS_POR_DEFECTO,
@@ -329,6 +321,6 @@ export default defineCachedEventHandler(async (event) => {
   };
 }, {
   name: 'analytics-prediction',
-  maxAge: 3600,
+  maxAge: 600,
   swr: true,
 });

@@ -269,6 +269,7 @@ const {
 } = useFetch('/api/analytics/occupation-duration', {
   query: computed(() => ({
     dias_historico: periodo.value === 'today' ? 7 : (periodo.value === '7d' ? 30 : (periodo.value === '30d' ? 90 : 180)),
+    dias_historico: periodo.value === 'today' ? 7 : 14,
   })),
   watch: [periodo],
   lazy: true,
@@ -350,7 +351,7 @@ const {
 } = useFetch('/api/analytics/eta', {
   query: computed(() => ({
     minutes: etaMinutes.value,
-    periodo: 'all',
+    periodo: '30d',
   })),
   watch: [etaMinutes],
   lazy: true,
@@ -419,7 +420,7 @@ onMounted(() => {
 
   intervaloRefresco = setInterval(() => {
     pollingInteligente();
-  }, 300_000);
+  }, 900_000);
 });
 
 onBeforeUnmount(() => {

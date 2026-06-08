@@ -27,9 +27,9 @@ function parseStationId(raw: unknown): string | null {
 }
 
 function parseDays(raw: unknown): number {
-  const n = Number(raw ?? 56);
+  const n = Number(raw ?? 14);
   if (!Number.isFinite(n)) return 56;
-  return Math.max(7, Math.min(365, Math.trunc(n)));
+  return Math.max(7, Math.min(30, Math.trunc(n)));
 }
 
 function median(values: number[]): number {

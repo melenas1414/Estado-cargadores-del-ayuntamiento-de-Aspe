@@ -4,8 +4,7 @@ import { defineCachedEventHandler } from 'nitropack/runtime';
 
 const DIAS_POR_PERIODO: Record<string, number | null> = {
   '7d': 7,
-  '30d': 30,
-  all: null,
+  '30d': 14,
 };
 
 type LogRow = {
@@ -19,8 +18,8 @@ type LogRow = {
 };
 
 function parsePeriodo(raw: unknown): number | null {
-  const periodo = String(raw ?? '30d');
-  if (!Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)) return 30;
+  const periodo = String(raw ?? '7d');
+  if (!Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)) return 7;
   return DIAS_POR_PERIODO[periodo];
 }
 

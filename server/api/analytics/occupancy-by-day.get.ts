@@ -5,8 +5,7 @@ import { defineCachedEventHandler } from 'nitropack/runtime';
 const DIAS_POR_PERIODO: Record<string, number | null> = {
   today: 1,
   '7d': 7,
-  '30d': 30,
-  all: null,
+  '30d': 14,
 };
 
 const DIAS_ES = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];

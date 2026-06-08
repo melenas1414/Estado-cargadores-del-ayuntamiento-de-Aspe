@@ -2,22 +2,6 @@ import { serverSupabaseClient } from '#supabase/server';
 import { getQuery } from 'h3';
 import { defineCachedEventHandler } from 'nitropack/runtime';
 
-const DIAS_POR_PERIODO: Record<string, number | null> = {
-  today: 1,
-  '7d': 7,
-  '30d': 30,
-  all: null,
-};
-
-type Row = {
-  station_id: string;
-  location_name: string;
-  created_at: string;
-  is_available: boolean;
-  available_connectors: number | null;
-  total_connectors: number | null;
-};
-
 function parseMinutes(raw: unknown): number {
   const n = Number(raw ?? 30);
   if (!Number.isFinite(n)) return 30;
@@ -30,110 +14,67 @@ function parseStationId(raw: unknown): string | null {
   return stationId;
 }
 
-function parsePeriodo(raw: unknown): number | null {
-  const periodo = String(raw ?? 'all');
-  if (!Object.prototype.hasOwnProperty.call(DIAS_POR_PERIODO, periodo)) {
-    return DIAS_POR_PERIODO.all;
-  }
-  return DIAS_POR_PERIODO[periodo];
+function parseDias(raw: unknown): number {
+  // Elimina la opción 'all' que antes descargaba datos ilimitados.
+  // Máximo 30 días para controlar el egress.
+  const OPCIONES: Record<string, number> = { today: 1, '7d': 7, '30d': 30 };
+  return OPCIONES[String(raw ?? '30d')] ?? 30;
 }
 
 export default defineCachedEventHandler(async (event) => {
   const query = getQuery(event);
   const minutes = parseMinutes(query.minutes);
-  const dias = parsePeriodo(query.periodo);
+  const dias = parseDias(query.periodo);
   const stationId = parseStationId(query.station_id ?? query.stationId);
 
+  const target = new Date(Date.now() + minutes * 60 * 1000);
+  const targetDow = target.getUTCDay();
+  const targetHour = target.getUTCHours();
+
   const supabase = await serverSupabaseClient(event);
-  const since = dias === null
-    ? null
-    : new Date(Date.now() - dias * 24 * 60 * 60 * 1000);
 
-  let queryLogs = supabase
-    .from('charging_logs')
-    .select('station_id, location_name, created_at, is_available, available_connectors, total_connectors')
-    .order('created_at', { ascending: true });
-
-  if (since) {
-    queryLogs = queryLogs.gte('created_at', since.toISOString());
-  }
-
-  if (stationId) {
-    queryLogs = queryLogs.eq('station_id', stationId);
-  }
-
-  const { data, error } = await queryLogs;
+  // RPC: devuelve 1 fila 'municipal' + N filas por estación (4-6 total)
+  // vs la descarga anterior de TODOS los datos históricos sin filtro temporal.
+  const { data, error } = await supabase.rpc('fn_eta_full', {
+    p_target_dow:  targetDow,
+    p_target_hour: targetHour,
+    p_dias:        dias,
+  });
 
   if (error) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: `Error en ETA: ${error.message}`,
-    });
+    throw createError({ statusCode: 500, statusMessage: `fn_eta_full: ${error.message}` });
   }
 
-  const rows = (data ?? []) as Row[];
+  const rows = (data ?? []) as Array<{
+    scope: string;
+    station_name: string;
+    prob_libre: number;
+    prob_saturada: number;
+    muestras: number;
+  }>;
+
   if (!rows.length) {
     return {
       etaMinutes: minutes,
+      targetDay: targetDow,
+      targetHour,
+      muestras: 0,
       probabilidadMunicipalLibre: 0,
       probabilidadMunicipalSaturada: 0,
-      muestras: 0,
+      estacionRecomendada: null,
       porEstacion: [],
     };
   }
 
-  const target = new Date(Date.now() + minutes * 60 * 1000);
-  const day = target.getUTCDay();
-  const hour = target.getUTCHours();
-
-  const snapshots: Record<string, { day: number; hour: number; free: number; total: number }> = {};
-  const byStationSnapshot: Record<string, Record<string, { free: number; total: number; name: string }>> = {};
-
-  for (const r of rows) {
-    const d = new Date(r.created_at);
-    const key = r.created_at;
-
-    if (!snapshots[key]) {
-      snapshots[key] = { day: d.getUTCDay(), hour: d.getUTCHours(), free: 0, total: 0 };
-    }
-
-    const free = typeof r.available_connectors === 'number' ? Math.max(0, r.available_connectors) : (r.is_available ? 1 : 0);
-    const total = typeof r.total_connectors === 'number' && r.total_connectors > 0 ? r.total_connectors : 2;
-
-    snapshots[key].free += free;
-    snapshots[key].total += total;
-
-    if (!byStationSnapshot[r.station_id]) byStationSnapshot[r.station_id] = {};
-    if (!byStationSnapshot[r.station_id][key]) {
-      byStationSnapshot[r.station_id][key] = { free: 0, total: 0, name: r.location_name };
-    }
-    byStationSnapshot[r.station_id][key].free += free;
-    byStationSnapshot[r.station_id][key].total += total;
-  }
-
-  const targetSnapshots = Object.entries(snapshots).filter(([, s]) => s.day === day && s.hour === hour);
-  const muestras = targetSnapshots.length;
-  const municipalLibres = targetSnapshots.filter(([, s]) => s.free > 0).length;
-  const municipalSaturadas = targetSnapshots.filter(([, s]) => s.free <= 0).length;
-
-  const probabilidadMunicipalLibre = muestras ? Math.round((municipalLibres / muestras) * 100) : 0;
-  const probabilidadMunicipalSaturada = muestras ? Math.round((municipalSaturadas / muestras) * 100) : 0;
-
-  const porEstacion = Object.entries(byStationSnapshot)
-    .map(([id, snapMap]) => {
-      const arr = Object.entries(snapMap).filter(([k]) => {
-        const s = snapshots[k];
-        return s && s.day === day && s.hour === hour;
-      });
-      const sampleCount = arr.length;
-      const freeCount = arr.filter(([, s]) => s.free > 0).length;
-      return {
-        station_id: id,
-        location_name: arr[0]?.[1]?.name ?? id,
-        probabilidadLibre: sampleCount ? Math.round((freeCount / sampleCount) * 100) : 0,
-        muestras: sampleCount,
-      };
-    })
+  const municipal = rows.find((r) => r.scope === 'municipal');
+  const porEstacion = rows
+    .filter((r) => r.scope !== 'municipal')
+    .map((r) => ({
+      station_id: r.scope,
+      location_name: r.station_name,
+      probabilidadLibre: Math.round(Number(r.prob_libre)),
+      muestras: r.muestras,
+    }))
     .sort((a, b) => b.probabilidadLibre - a.probabilidadLibre);
 
   const recomendada = stationId
@@ -142,16 +83,16 @@ export default defineCachedEventHandler(async (event) => {
 
   return {
     etaMinutes: minutes,
-    targetDay: day,
-    targetHour: hour,
-    muestras,
-    probabilidadMunicipalLibre,
-    probabilidadMunicipalSaturada,
+    targetDay: targetDow,
+    targetHour,
+    muestras: municipal?.muestras ?? 0,
+    probabilidadMunicipalLibre: Math.round(Number(municipal?.prob_libre ?? 0)),
+    probabilidadMunicipalSaturada: Math.round(Number(municipal?.prob_saturada ?? 0)),
     estacionRecomendada: recomendada,
     porEstacion,
   };
 }, {
   name: 'analytics-eta',
-  maxAge: 3600,
+  maxAge: 600,
   swr: true,
 });
