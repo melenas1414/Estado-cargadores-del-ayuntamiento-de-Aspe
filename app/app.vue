@@ -13,6 +13,8 @@
       </div>
     </header>
 
+    <MaintenanceBanner />
+
     <NuxtPage />
     <CookieConsent />
   </div>
