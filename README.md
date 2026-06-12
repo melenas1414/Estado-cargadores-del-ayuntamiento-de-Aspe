@@ -20,6 +20,7 @@ Aplicacion web para monitorizar en tiempo casi real la disponibilidad de cargado
 - [Puesta en marcha local](#puesta-en-marcha-local)
 - [Variables de entorno](#variables-de-entorno)
 - [Automatizacion y despliegue](#automatizacion-y-despliegue)
+- [Despliegue en Cloudflare](#despliegue-en-cloudflare)
 - [Notificaciones por Telegram (n8n)](#notificaciones-por-telegram-n8n)
 - [Scripts npm](#scripts-npm)
 - [Troubleshooting](#troubleshooting)
@@ -255,6 +256,12 @@ Secrets para deploy:
 - VERCEL_TOKEN
 - VERCEL_ORG_ID
 - VERCEL_PROJECT_ID
+
+## Despliegue en Cloudflare
+
+Guia paso a paso para desplegar frontend + API en el mismo proyecto usando Cloudflare Pages:
+
+- docs/cloudflare/README.md
 
 ## Notificaciones por Telegram (n8n)
 
