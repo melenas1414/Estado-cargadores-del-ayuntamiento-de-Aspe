@@ -24,10 +24,10 @@
 import { AlertCircle } from 'lucide-vue-next';
 
 const daysRemaining = computed(() => {
-  const today = new Date(2026, 5, 11); // 11 de junio de 2026
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
   const resetDate = new Date(2026, 5, 20); // 20 de junio de 2026
-  const diffTime = Math.abs(resetDate.getTime() - today.getTime());
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
+  const diffTime = resetDate.getTime() - today.getTime();
+  return Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 });
 </script>
