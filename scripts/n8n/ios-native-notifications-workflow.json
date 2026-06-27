@@ -1,0 +1,146 @@
+{
+  "name": "iOS Native Push Notifications Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "name": "Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [ 100, 300 ]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/mobile_notification_subscriptions?select=id,station_id,notify_mode,mobile_users!inner(apns_token),charger_current_status!inner(is_available)&active=eq.true&charger_current_status.is_available=eq.true&expires_at=gt.now()",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "options": {}
+      },
+      "name": "Fetch Available Subscriptions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [ 300, 300 ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "data",
+        "options": {}
+      },
+      "name": "Item Lists",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 1,
+      "position": [ 500, 300 ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://fcm.googleapis.com/v1/projects/YOUR_PROJECT_ID/messages:send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.FCM_ACCESS_TOKEN}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={ \"token\": \"{{$json.mobile_users.apns_token}}\", \"notification\": { \"title\": \"⚡ Cargador Disponible\", \"body\": \"El cargador {{$json.station_id}} se encuentra libre ahora mismo.\" }, \"apns\": { \"payload\": { \"aps\": { \"sound\": \"default\" } } } }"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Send Push Notification (FCM/APNs)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [ 700, 300 ],
+      "notesInFlow": true,
+      "notes": "Replace URL and Auth with your Push provider (FCM or APNs Provider)"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/mobile_notification_subscriptions?id=eq.{{$json.id}}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "active",
+              "value": "false"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Deactivate Subscription",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [ 900, 300 ]
+    }
+  ],
+  "connections": {
+    "Schedule": {
+      "main": [
+        [
+          {
+            "node": "Fetch Available Subscriptions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Available Subscriptions": {
+      "main": [
+        [
+          {
+            "node": "Item Lists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Item Lists": {
+      "main": [
+        [
+          {
+            "node": "Send Push Notification (FCM/APNs)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Push Notification (FCM/APNs)": {
+      "main": [
+        [
+          {
+            "node": "Deactivate Subscription",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
